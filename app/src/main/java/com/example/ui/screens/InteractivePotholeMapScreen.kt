@@ -1,16 +1,27 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,21 +35,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CrisisAlert
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,8 +58,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,56 +79,33 @@ import com.example.services.location.UserLocation
 import com.example.ui.components.PotholeItemCard
 import com.example.ui.components.SkeuomorphicLed
 import com.example.ui.components.skeuomorphicCard
-import com.example.ui.components.skeuomorphicInset
+import com.example.ui.components.tactilePress
 import com.example.ui.maps.PotholeClusterAnalyzer
-import com.example.ui.maps.PotholeClusterArea
-import com.example.ui.maps.PotholeClusterItem
 import com.example.ui.theme.SkeuoAmber
 import com.example.ui.theme.SkeuoBorderLight
 import com.example.ui.theme.SkeuoCanvas
 import com.example.ui.theme.SkeuoCobalt
 import com.example.ui.theme.SkeuoCrimson
+import com.example.ui.theme.SkeuoCyan
 import com.example.ui.theme.SkeuoEmerald
 import com.example.ui.theme.SkeuoHighlight
 import com.example.ui.theme.SkeuoPurple
 import com.example.ui.theme.SkeuoShadowDark
-import com.example.ui.theme.SkeuoSurface
 import com.example.ui.theme.SkeuoSurfaceElevated
 import com.example.ui.theme.SkeuoTextPrimary
 import com.example.ui.theme.SkeuoTextSecondary
-import com.example.ui.theme.SkeuoTextTertiary
 import com.example.ui.theme.SkeuoWellInset
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MapStyleOptions
-import com.google.maps.android.compose.Circle
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.MapProperties
-import com.google.maps.android.compose.MapType
-import com.google.maps.android.compose.MapUiSettings
-import com.google.maps.android.compose.clustering.Clustering
-import com.google.maps.android.compose.rememberCameraPositionState
-import kotlinx.coroutines.launch
+import com.example.ui.maps.RoomPotholeMapScreen
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
-private const val LIGHT_MAP_STYLE_JSON = """
-[
-  {"elementType": "geometry", "stylers": [{"color": "#f1f5f9"}]},
-  {"elementType": "labels.text.fill", "stylers": [{"color": "#475569"}]},
-  {"elementType": "labels.text.stroke", "stylers": [{"color": "#ffffff"}]},
-  {"featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{"color": "#2563eb"}]},
-  {"featureType": "poi", "elementType": "labels.text.fill", "stylers": [{"color": "#64748b"}]},
-  {"featureType": "poi.park", "elementType": "geometry", "stylers": [{"color": "#dcfce7"}]},
-  {"featureType": "road", "elementType": "geometry", "stylers": [{"color": "#ffffff"}]},
-  {"featureType": "road", "elementType": "geometry.stroke", "stylers": [{"color": "#e2e8f0"}]},
-  {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#cbd5e1"}]},
-  {"featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{"color": "#94a3b8"}]},
-  {"featureType": "road.highway", "elementType": "labels.text.fill", "stylers": [{"color": "#1e293b"}]},
-  {"featureType": "transit", "elementType": "geometry", "stylers": [{"color": "#e2e8f0"}]},
-  {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#bae6fd"}]},
-  {"featureType": "water", "elementType": "labels.text.fill", "stylers": [{"color": "#0284c7"}]}
-]
-"""
+enum class GisMapStyle(val label: String) {
+    TACTICAL_BLUEPRINT("Blueprint"),
+    RADAR_NIGHT("Radar Night"),
+    TERRAIN_GIS("Terrain GIS"),
+    GOOGLE_MAPS_ROOM("Google Maps (Room)")
+}
 
 @Composable
 fun InteractivePotholeMapScreen(
@@ -117,173 +114,321 @@ fun InteractivePotholeMapScreen(
     focusCoordinates: Pair<Double, Double>? = null,
     onSelectPothole: (Pothole) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
     var selectedSeverityFilter by remember { mutableStateOf<Severity?>(null) }
-    var currentMapType by remember { mutableStateOf(MapType.NORMAL) }
+    var currentMapStyle by remember { mutableStateOf(GisMapStyle.TACTICAL_BLUEPRINT) }
     var showDensityRings by remember { mutableStateOf(true) }
     var isClusterHotspotsOpen by remember { mutableStateOf(true) }
     var activeInspectedPothole by remember { mutableStateOf<Pothole?>(null) }
 
+    // Map Center and Scale state
+    val defaultCenterLat = 19.5687
+    val defaultCenterLng = 74.2112
+    var centerLat by remember { mutableStateOf(defaultCenterLat) }
+    var centerLng by remember { mutableStateOf(defaultCenterLng) }
+    var zoomScale by remember { mutableFloatStateOf(1.2f) }
+    var panOffsetX by remember { mutableFloatStateOf(0f) }
+    var panOffsetY by remember { mutableFloatStateOf(0f) }
+
+    // Radar pulse animation
+    val infiniteTransition = rememberInfiniteTransition(label = "radar_anim")
+    val radarPulse by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse"
+    )
+    val radarSweepAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweep"
+    )
+
     val filteredPotholes = remember(potholes, selectedSeverityFilter) {
         if (selectedSeverityFilter == null) potholes else potholes.filter { it.severity == selectedSeverityFilter }
-    }
-
-    val clusterItems = remember(filteredPotholes) {
-        filteredPotholes.map { PotholeClusterItem(it) }
     }
 
     val clusterAreas = remember(filteredPotholes) {
         PotholeClusterAnalyzer.identifyClusters(filteredPotholes)
     }
 
-    val sangamnerCenter = LatLng(19.5687, 74.2112)
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(sangamnerCenter, 13.5f)
-    }
-
     LaunchedEffect(focusCoordinates) {
         focusCoordinates?.let { (lat, lng) ->
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 15.5f)
-            )
+            centerLat = lat
+            centerLng = lng
+            panOffsetX = 0f
+            panOffsetY = 0f
+            zoomScale = 2.2f
+            activeInspectedPothole = potholes.find { it.latitude == lat && it.longitude == lng }
         }
     }
 
-    Box(
+    if (currentMapStyle == GisMapStyle.GOOGLE_MAPS_ROOM) {
+        RoomPotholeMapScreen(
+            modifier = Modifier.fillMaxSize(),
+            initialLat = centerLat,
+            initialLng = centerLng
+        )
+        return
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(SkeuoCanvas)
+            .background(
+                when (currentMapStyle) {
+                    GisMapStyle.TACTICAL_BLUEPRINT -> Color(0xFFF1F5F9)
+                    GisMapStyle.RADAR_NIGHT -> Color(0xFF0A0F1D)
+                    GisMapStyle.TERRAIN_GIS -> Color(0xFF1E293B)
+                    GisMapStyle.GOOGLE_MAPS_ROOM -> Color(0xFF1E293B)
+                }
+            )
             .testTag("interactive_map_screen")
     ) {
-        val mapProperties = remember(currentMapType) {
-            MapProperties(
-                mapStyleOptions = if (currentMapType == MapType.NORMAL) MapStyleOptions(LIGHT_MAP_STYLE_JSON) else null,
-                mapType = currentMapType,
-                isMyLocationEnabled = false
-            )
-        }
-        val mapUiSettings = remember {
-            MapUiSettings(
-                zoomControlsEnabled = false,
-                myLocationButtonEnabled = false,
-                compassEnabled = true,
-                mapToolbarEnabled = false
-            )
+        val widthPx = constraints.maxWidth.toFloat()
+        val heightPx = constraints.maxHeight.toFloat()
+        val canvasCenter = Offset(widthPx / 2f + panOffsetX, heightPx / 2f + panOffsetY)
+
+        // GIS coordinate converter: maps (lat, lng) to Canvas Pixel Offset
+        fun projectLatLng(lat: Double, lng: Double): Offset {
+            val latDelta = (lat - centerLat)
+            val lngDelta = (lng - centerLng)
+            // 1 degree lat ~ 111km, 1 degree lng ~ 104km at 19 deg N
+            val meterPerDegLat = 111000.0
+            val meterPerDegLng = 104500.0
+
+            val xMeters = lngDelta * meterPerDegLng
+            val yMeters = -latDelta * meterPerDegLat // Invert Y for screen coordinates
+
+            val pixelsPerMeter = (0.28f * zoomScale)
+            val px = canvasCenter.x + (xMeters * pixelsPerMeter).toFloat()
+            val py = canvasCenter.y + (yMeters * pixelsPerMeter).toFloat()
+            return Offset(px, py)
         }
 
-        GoogleMap(
+        // Gesture handling for interactive Pan and Zoom
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .testTag("google_map_container"),
-            cameraPositionState = cameraPositionState,
-            properties = mapProperties,
-            uiSettings = mapUiSettings
-        ) {
-            if (showDensityRings) {
-                clusterAreas.filter { it.potholes.size >= 2 }.forEach { area ->
-                    val ringColor = when {
-                        area.highRiskCount > 0 -> SkeuoCrimson
-                        area.mediumRiskCount > 0 -> SkeuoAmber
-                        else -> SkeuoPurple
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        zoomScale = (zoomScale * zoom).coerceIn(0.5f, 5.0f)
+                        panOffsetX += pan.x
+                        panOffsetY += pan.y
                     }
-                    Circle(
-                        center = LatLng(area.centerLatitude, area.centerLongitude),
-                        radius = 260.0,
-                        fillColor = ringColor.copy(alpha = 0.20f),
-                        strokeColor = ringColor.copy(alpha = 0.85f),
-                        strokeWidth = 3f
+                }
+                .pointerInput(filteredPotholes, zoomScale, panOffsetX, panOffsetY) {
+                    detectTapGestures { tapOffset ->
+                        // Hit-test potholes within 32dp touch radius
+                        var matchedPothole: Pothole? = null
+                        var minDistance = Float.MAX_VALUE
+                        for (pothole in filteredPotholes) {
+                            val pos = projectLatLng(pothole.latitude, pothole.longitude)
+                            val dist = sqrt((pos.x - tapOffset.x) * (pos.x - tapOffset.x) + (pos.y - tapOffset.y) * (pos.y - tapOffset.y))
+                            if (dist < 50f && dist < minDistance) {
+                                minDistance = dist
+                                matchedPothole = pothole
+                            }
+                        }
+                        if (matchedPothole != null) {
+                            activeInspectedPothole = matchedPothole
+                            onSelectPothole(matchedPothole)
+                        } else {
+                            activeInspectedPothole = null
+                        }
+                    }
+                }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize().testTag("gis_vector_map_canvas")) {
+                val isDark = currentMapStyle != GisMapStyle.TACTICAL_BLUEPRINT
+                val gridColor = if (isDark) Color(0xFF1E293B).copy(alpha = 0.7f) else Color(0xFFCBD5E1).copy(alpha = 0.8f)
+                val roadPrimary = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                val roadHighlight = if (isDark) Color(0xFF475569) else Color(0xFFCBD5E1)
+
+                // 1. Draw GIS Coordinate Grid Lines
+                val gridSize = 80f * zoomScale
+                val startX = (canvasCenter.x % gridSize) - gridSize
+                val startY = (canvasCenter.y % gridSize) - gridSize
+
+                var x = startX
+                while (x < size.width + gridSize) {
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                    )
+                    x += gridSize
+                }
+
+                var y = startY
+                while (y < size.height + gridSize) {
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                    )
+                    y += gridSize
+                }
+
+                // 2. Draw Sangamner Arterial Road Network Schematic
+                drawSchematicRoadNetwork(
+                    project = ::projectLatLng,
+                    roadColor = roadPrimary,
+                    highlightColor = roadHighlight,
+                    zoom = zoomScale,
+                    isDark = isDark
+                )
+
+                // 3. Draw Radar concentric range rings & scanning beam (Radar Night mode)
+                if (currentMapStyle == GisMapStyle.RADAR_NIGHT) {
+                    val radarCenter = canvasCenter
+                    val maxRadius = size.maxDimension * 0.8f
+
+                    for (r in 1..4) {
+                        val ringRadius = maxRadius * (r / 4f) * (zoomScale * 0.6f)
+                        drawCircle(
+                            color = SkeuoCyan.copy(alpha = 0.12f),
+                            radius = ringRadius,
+                            center = radarCenter,
+                            style = Stroke(width = 1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f)))
+                        )
+                    }
+
+                    // Rotating radar beam
+                    rotate(degrees = radarSweepAngle, pivot = radarCenter) {
+                        drawArc(
+                            brush = Brush.sweepGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    SkeuoCyan.copy(alpha = 0.05f),
+                                    SkeuoCyan.copy(alpha = 0.22f)
+                                )
+                            ),
+                            startAngle = 0f,
+                            sweepAngle = 45f,
+                            useCenter = true,
+                            topLeft = Offset(radarCenter.x - maxRadius, radarCenter.y - maxRadius),
+                            size = Size(maxRadius * 2, maxRadius * 2)
+                        )
+                        drawLine(
+                            color = SkeuoCyan.copy(alpha = 0.7f),
+                            start = radarCenter,
+                            end = Offset(radarCenter.x + maxRadius, radarCenter.y),
+                            strokeWidth = 2f
+                        )
+                    }
+                }
+
+                // 4. Draw Cluster Density Heat Rings
+                if (showDensityRings) {
+                    clusterAreas.filter { it.potholes.size >= 2 }.forEach { area ->
+                        val centerPos = projectLatLng(area.centerLatitude, area.centerLongitude)
+                        val ringColor = when {
+                            area.highRiskCount > 0 -> SkeuoCrimson
+                            area.mediumRiskCount > 0 -> SkeuoAmber
+                            else -> SkeuoPurple
+                        }
+                        val baseRadiusPx = (area.radiusMeters * 0.28f * zoomScale).toFloat().coerceIn(40f, 220f)
+                        val pulsingRadius = baseRadiusPx * (1f + (radarPulse * 0.25f))
+
+                        drawCircle(
+                            color = ringColor.copy(alpha = 0.12f * (1f - radarPulse)),
+                            radius = pulsingRadius,
+                            center = centerPos
+                        )
+                        drawCircle(
+                            color = ringColor.copy(alpha = 0.22f),
+                            radius = baseRadiusPx,
+                            center = centerPos
+                        )
+                        drawCircle(
+                            color = ringColor.copy(alpha = 0.75f),
+                            radius = baseRadiusPx,
+                            center = centerPos,
+                            style = Stroke(width = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
+                        )
+                    }
+                }
+
+                // 5. Draw User Location GPS Beacon
+                if (userLocation.latitude != 0.0) {
+                    val userPos = projectLatLng(userLocation.latitude, userLocation.longitude)
+                    val userPulseRadius = 24f * zoomScale * (1f + (radarPulse * 0.4f))
+
+                    drawCircle(
+                        color = SkeuoCobalt.copy(alpha = 0.25f * (1f - radarPulse)),
+                        radius = userPulseRadius,
+                        center = userPos
+                    )
+                    drawCircle(
+                        color = SkeuoCobalt,
+                        radius = 8f * zoomScale.coerceIn(1f, 1.8f),
+                        center = userPos
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 4f * zoomScale.coerceIn(1f, 1.8f),
+                        center = userPos
                     )
                 }
-            }
 
-            Clustering(
-                items = clusterItems,
-                onClusterClick = { cluster ->
-                    coroutineScope.launch {
-                        cameraPositionState.animate(
-                            CameraUpdateFactory.newLatLngZoom(
-                                LatLng(cluster.position.latitude, cluster.position.longitude),
-                                cameraPositionState.position.zoom + 2.5f
-                            )
-                        )
-                    }
-                    true
-                },
-                onClusterItemClick = { item ->
-                    activeInspectedPothole = item.pothole
-                    onSelectPothole(item.pothole)
-                    true
-                },
-                clusterContent = { cluster ->
-                    val hasHighRisk = cluster.items.any { it.pothole.severity == Severity.HIGH }
-                    val hasMediumRisk = cluster.items.any { it.pothole.severity == Severity.MEDIUM }
-                    val badgeColor = when {
-                        hasHighRisk -> SkeuoCrimson
-                        hasMediumRisk -> SkeuoAmber
-                        else -> SkeuoCobalt
-                    }
+                // 6. Draw Pothole Hazards Markers
+                for (pothole in filteredPotholes) {
+                    val pos = projectLatLng(pothole.latitude, pothole.longitude)
+                    val isInspected = activeInspectedPothole?.potholeId == pothole.potholeId
 
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .shadow(6.dp, CircleShape, ambientColor = badgeColor.copy(alpha = 0.5f))
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = listOf(
-                                        Color.White,
-                                        badgeColor,
-                                        badgeColor.copy(alpha = 0.9f)
-                                    )
-                                )
-                            )
-                            .border(2.dp, Color.White, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${cluster.size}",
-                            color = Color.White,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 15.sp
-                        )
-                    }
-                },
-                clusterItemContent = { item ->
-                    val markerColor = when (item.pothole.severity) {
+                    val color = when (pothole.severity) {
                         Severity.HIGH -> SkeuoCrimson
                         Severity.MEDIUM -> SkeuoAmber
                         Severity.LOW -> SkeuoEmerald
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .shadow(4.dp, CircleShape, ambientColor = markerColor.copy(alpha = 0.4f))
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(2.dp, markerColor, CircleShape)
-                            .padding(4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = markerColor,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    val pinRadius = if (isInspected) 16f else 11f
+
+                    // Glowing backdrop
+                    drawCircle(
+                        color = color.copy(alpha = if (isInspected) 0.45f else 0.25f),
+                        radius = pinRadius * 1.8f,
+                        center = pos
+                    )
+
+                    // Pin Outer ring
+                    drawCircle(
+                        color = if (isDark) Color(0xFF0F172A) else Color.White,
+                        radius = pinRadius,
+                        center = pos
+                    )
+                    drawCircle(
+                        color = color,
+                        radius = pinRadius,
+                        center = pos,
+                        style = Stroke(width = if (isInspected) 3.5f else 2.5f)
+                    )
+
+                    // Pin Inner Center
+                    drawCircle(
+                        color = color,
+                        radius = pinRadius * 0.55f,
+                        center = pos
+                    )
+
+                    // Selected Target Crosshair
+                    if (isInspected) {
+                        val chLen = 26f
+                        drawLine(color = color, start = Offset(pos.x - chLen, pos.y), end = Offset(pos.x + chLen, pos.y), strokeWidth = 1.5f)
+                        drawLine(color = color, start = Offset(pos.x, pos.y - chLen), end = Offset(pos.x, pos.y + chLen), strokeWidth = 1.5f)
                     }
                 }
-            )
-
-            // User Location Marker
-            if (userLocation.latitude != 0.0) {
-                Circle(
-                    center = LatLng(userLocation.latitude, userLocation.longitude),
-                    radius = 20.0,
-                    fillColor = SkeuoCobalt.copy(alpha = 0.35f),
-                    strokeColor = SkeuoCobalt,
-                    strokeWidth = 3f
-                )
             }
         }
 
@@ -311,7 +456,7 @@ fun InteractivePotholeMapScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = "ROAD DEFECT RADAR",
+                                    text = "ROAD DEFECT RADAR GIS",
                                     color = SkeuoCobalt,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 10.sp,
@@ -332,8 +477,11 @@ fun InteractivePotholeMapScreen(
                                 .shadow(2.dp, RoundedCornerShape(12.dp))
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isClusterHotspotsOpen) SkeuoCobalt else SkeuoWellInset)
-                                .clickable { isClusterHotspotsOpen = !isClusterHotspotsOpen }
+                                .tactilePress(pressedScale = 0.94f) {
+                                    isClusterHotspotsOpen = !isClusterHotspotsOpen
+                                }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("toggle_hotspots_btn")
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -417,15 +565,13 @@ fun InteractivePotholeMapScreen(
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Color.White)
                                 .border(1.dp, SkeuoBorderLight, RoundedCornerShape(14.dp))
-                                .clickable {
-                                    coroutineScope.launch {
-                                        cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(
-                                                LatLng(area.centerLatitude, area.centerLongitude),
-                                                15.5f
-                                            )
-                                        )
-                                    }
+                                .tactilePress(pressedScale = 0.94f) {
+                                    centerLat = area.centerLatitude
+                                    centerLng = area.centerLongitude
+                                    panOffsetX = 0f
+                                    panOffsetY = 0f
+                                    zoomScale = 2.4f
+                                    activeInspectedPothole = area.potholes.firstOrNull()
                                 }
                                 .padding(horizontal = 12.dp, vertical = 7.dp)
                         ) {
@@ -457,7 +603,7 @@ fun InteractivePotholeMapScreen(
                 .padding(end = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Re-center to User Location
+            // Zoom In Button
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -465,22 +611,87 @@ fun InteractivePotholeMapScreen(
                     .clip(CircleShape)
                     .background(Color.White)
                     .border(1.dp, SkeuoBorderLight, CircleShape)
-                    .clickable {
+                    .tactilePress(pressedScale = 0.92f) {
+                        zoomScale = (zoomScale * 1.3f).coerceAtMost(5.0f)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Zoom In",
+                    tint = SkeuoTextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Zoom Out Button
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(4.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, SkeuoBorderLight, CircleShape)
+                    .tactilePress(pressedScale = 0.92f) {
+                        zoomScale = (zoomScale / 1.3f).coerceAtLeast(0.5f)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = "Zoom Out",
+                    tint = SkeuoTextPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Reset Center / Overview Button
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(4.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, SkeuoBorderLight, CircleShape)
+                    .tactilePress(pressedScale = 0.92f) {
+                        centerLat = defaultCenterLat
+                        centerLng = defaultCenterLng
+                        panOffsetX = 0f
+                        panOffsetY = 0f
+                        zoomScale = 1.2f
+                        activeInspectedPothole = null
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ZoomOutMap,
+                    contentDescription = "Reset View",
+                    tint = SkeuoTextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // Re-center to User GPS Location
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .shadow(4.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, SkeuoBorderLight, CircleShape)
+                    .tactilePress(pressedScale = 0.92f) {
                         if (userLocation.latitude != 0.0) {
-                            coroutineScope.launch {
-                                cameraPositionState.animate(
-                                    CameraUpdateFactory.newLatLngZoom(
-                                        LatLng(userLocation.latitude, userLocation.longitude),
-                                        15f
-                                    )
-                                )
-                            }
+                            centerLat = userLocation.latitude
+                            centerLng = userLocation.longitude
+                            panOffsetX = 0f
+                            panOffsetY = 0f
+                            zoomScale = 2.0f
                         } else {
-                            coroutineScope.launch {
-                                cameraPositionState.animate(
-                                    CameraUpdateFactory.newLatLngZoom(sangamnerCenter, 13.5f)
-                                )
-                            }
+                            centerLat = defaultCenterLat
+                            centerLng = defaultCenterLng
+                            panOffsetX = 0f
+                            panOffsetY = 0f
+                            zoomScale = 1.2f
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -493,7 +704,7 @@ fun InteractivePotholeMapScreen(
                 )
             }
 
-            // Map Type Toggle (Normal / Hybrid / Satellite)
+            // GIS Style Switcher (Blueprint / Radar Night / Terrain)
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -501,18 +712,19 @@ fun InteractivePotholeMapScreen(
                     .clip(CircleShape)
                     .background(Color.White)
                     .border(1.dp, SkeuoBorderLight, CircleShape)
-                    .clickable {
-                        currentMapType = when (currentMapType) {
-                            MapType.NORMAL -> MapType.HYBRID
-                            MapType.HYBRID -> MapType.TERRAIN
-                            else -> MapType.NORMAL
+                    .tactilePress(pressedScale = 0.92f) {
+                        currentMapStyle = when (currentMapStyle) {
+                            GisMapStyle.TACTICAL_BLUEPRINT -> GisMapStyle.RADAR_NIGHT
+                            GisMapStyle.RADAR_NIGHT -> GisMapStyle.TERRAIN_GIS
+                            GisMapStyle.TERRAIN_GIS -> GisMapStyle.GOOGLE_MAPS_ROOM
+                            GisMapStyle.GOOGLE_MAPS_ROOM -> GisMapStyle.TACTICAL_BLUEPRINT
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Layers,
-                    contentDescription = "Map Style",
+                    contentDescription = "Map Style: ${currentMapStyle.label}",
                     tint = SkeuoTextSecondary,
                     modifier = Modifier.size(20.dp)
                 )
@@ -526,7 +738,9 @@ fun InteractivePotholeMapScreen(
                     .clip(CircleShape)
                     .background(if (showDensityRings) SkeuoCobalt else Color.White)
                     .border(1.dp, SkeuoBorderLight, CircleShape)
-                    .clickable { showDensityRings = !showDensityRings },
+                    .tactilePress(pressedScale = 0.92f) {
+                        showDensityRings = !showDensityRings
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -553,6 +767,65 @@ fun InteractivePotholeMapScreen(
             }
         }
     }
+}
+
+/**
+ * Renders Sangamner schematic road network vectors onto the GIS canvas
+ */
+private fun DrawScope.drawSchematicRoadNetwork(
+    project: (Double, Double) -> Offset,
+    roadColor: Color,
+    highlightColor: Color,
+    zoom: Float,
+    isDark: Boolean
+) {
+    // Key Sangamner Corridors coordinates
+    val puneNashikHwy = listOf(
+        Pair(19.5450, 74.2000),
+        Pair(19.5580, 74.2060),
+        Pair(19.5687, 74.2112),
+        Pair(19.5800, 74.2180),
+        Pair(19.5950, 74.2250)
+    )
+
+    val akoleBypass = listOf(
+        Pair(19.5600, 74.1950),
+        Pair(19.5650, 74.2040),
+        Pair(19.5687, 74.2112),
+        Pair(19.5720, 74.2240),
+        Pair(19.5760, 74.2380)
+    )
+
+    val midcArterial = listOf(
+        Pair(19.5520, 74.2180),
+        Pair(19.5610, 74.2140),
+        Pair(19.5687, 74.2112),
+        Pair(19.5780, 74.2010)
+    )
+
+    fun drawCorridor(points: List<Pair<Double, Double>>, width: Float) {
+        val path = Path()
+        points.forEachIndexed { i, (lat, lng) ->
+            val pt = project(lat, lng)
+            if (i == 0) path.moveTo(pt.x, pt.y) else path.lineTo(pt.x, pt.y)
+        }
+        // Road casing
+        drawPath(
+            path = path,
+            color = highlightColor,
+            style = Stroke(width = width + (4f * zoom.coerceIn(0.8f, 2.5f)))
+        )
+        // Road surface
+        drawPath(
+            path = path,
+            color = roadColor,
+            style = Stroke(width = width)
+        )
+    }
+
+    drawCorridor(puneNashikHwy, 14f * zoom.coerceIn(0.8f, 2.5f))
+    drawCorridor(akoleBypass, 10f * zoom.coerceIn(0.8f, 2.5f))
+    drawCorridor(midcArterial, 8f * zoom.coerceIn(0.8f, 2.5f))
 }
 
 @Composable
@@ -585,7 +858,7 @@ private fun SkeuoFilterPill(
                 if (isSelected) color else SkeuoBorderLight,
                 RoundedCornerShape(10.dp)
             )
-            .clickable { onClick() }
+            .tactilePress(pressedScale = 0.94f) { onClick() }
             .padding(vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {

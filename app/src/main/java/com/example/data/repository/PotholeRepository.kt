@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -38,6 +39,13 @@ class PotholeRepository(
     val localDetections: Flow<List<DetectionEventEntity>> = dao.getAllDetections()
     val localReports: Flow<List<ManualReportEntity>> = dao.getAllReports()
     val detectionCount: Flow<Int> = dao.getDetectionCount()
+
+    val pendingSyncCount: Flow<Int> = combine(
+        dao.getPendingDetectionsCount(),
+        dao.getPendingReportsCount()
+    ) { detCount, repCount ->
+        detCount + repCount
+    }
 
     init {
         // Pre-populate Room database with initial seed potholes if empty

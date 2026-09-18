@@ -2,20 +2,14 @@ package com.example.ui.maps
 
 import com.example.data.models.Pothole
 import com.example.data.models.Severity
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.clustering.ClusterItem
 
 data class PotholeClusterItem(
     val pothole: Pothole
-) : ClusterItem {
-    override fun getPosition(): LatLng = LatLng(pothole.latitude, pothole.longitude)
-    override fun getTitle(): String = pothole.potholeId
-    override fun getSnippet(): String = "${pothole.severity.label} - ${pothole.address}"
-    override fun getZIndex(): Float? = when (pothole.severity) {
-        Severity.HIGH -> 3f
-        Severity.MEDIUM -> 2f
-        Severity.LOW -> 1f
-    }
+) {
+    val latitude: Double get() = pothole.latitude
+    val longitude: Double get() = pothole.longitude
+    val title: String get() = pothole.potholeId
+    val snippet: String get() = "${pothole.severity.label} - ${pothole.address}"
 }
 
 data class PotholeClusterArea(

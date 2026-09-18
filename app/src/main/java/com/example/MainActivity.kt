@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels {
         val app = application as SmartPotholeApp
-        MainViewModel.provideFactory(app.repository, app.sensorEngine, app.locationService)
+        MainViewModel.provideFactory(app.repository, app.sensorEngine, app.locationService, app.networkObserver)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

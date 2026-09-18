@@ -73,6 +73,7 @@ import com.example.data.models.Severity
 import com.example.services.location.UserLocation
 import com.example.services.sensor.LiveSensorTelemetry
 import com.example.ui.components.PotholeItemCard
+import com.example.ui.components.RoomSyncStatusCard
 import com.example.ui.components.SkeuomorphicButton
 import com.example.ui.components.SkeuomorphicGauge
 import com.example.ui.components.SkeuomorphicLed
@@ -109,11 +110,14 @@ fun CitizenHomeScreen(
     userLocation: UserLocation,
     telemetry: LiveSensorTelemetry,
     nearbyPotholes: List<Pothole>,
+    isNetworkAvailable: Boolean = true,
+    pendingSyncCount: Int = 0,
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit,
     onSimulateBump: () -> Unit,
     onQuickReport: () -> Unit,
     onSyncNow: () -> Unit,
+    onToggleSimulation: (() -> Unit)? = null,
     onSelectPothole: (Pothole) -> Unit = {},
     onViewActivity: () -> Unit = {},
     onSignOut: () -> Unit
@@ -171,8 +175,18 @@ fun CitizenHomeScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Room DB Sync & Network Status Warning Indicator
         item {
             Spacer(modifier = Modifier.height(4.dp))
+            RoomSyncStatusCard(
+                isNetworkAvailable = isNetworkAvailable,
+                pendingSyncCount = pendingSyncCount,
+                onSyncNow = onSyncNow,
+                onToggleSimulation = onToggleSimulation
+            )
+        }
+
+        item {
             // Skeuomorphic Hero Header with Beveled Plate & Chrome Bezel
             Box(
                 modifier = Modifier

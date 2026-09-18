@@ -26,8 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PendingActions
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -698,6 +702,177 @@ fun PotholeListItemCard(
                         color = SkeuoCobalt,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Visual Indicator Warning & Status Card for Room Database and Network Sync
+ */
+@Composable
+fun RoomSyncStatusCard(
+    isNetworkAvailable: Boolean,
+    pendingSyncCount: Int,
+    onSyncNow: () -> Unit,
+    onToggleSimulation: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val statusColor = when {
+        !isNetworkAvailable -> SkeuoCrimson
+        pendingSyncCount > 0 -> SkeuoAmber
+        else -> SkeuoEmerald
+    }
+
+    val icon = when {
+        !isNetworkAvailable -> Icons.Default.CloudOff
+        pendingSyncCount > 0 -> Icons.Default.SyncProblem
+        else -> Icons.Default.CloudDone
+    }
+
+    val statusTitle = when {
+        !isNetworkAvailable -> "OFFLINE MODE — ROOM DB CACHED"
+        pendingSyncCount > 0 -> "ROOM DB OUT OF SYNC ($pendingSyncCount PENDING)"
+        else -> "ROOM DB SYNCED & ONLINE"
+    }
+
+    val statusSubtitle = when {
+        !isNetworkAvailable -> "No network connection. Pothole detections and reports are securely persisted locally in Room SQLite."
+        pendingSyncCount > 0 -> "$pendingSyncCount local event(s) recorded offline waiting to upload to municipal cloud server."
+        else -> "Local Room database is fully synchronized with central cloud repository."
+    }
+
+    val actionText = when {
+        !isNetworkAvailable -> "TOGGLE NET"
+        pendingSyncCount > 0 -> "SYNC NOW"
+        else -> "SYNCED"
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(3.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFFFFFFF),
+                        statusColor.copy(alpha = 0.08f)
+                    )
+                )
+            )
+            .border(
+                1.dp,
+                Brush.verticalGradient(
+                    listOf(SkeuoHighlight, statusColor.copy(alpha = 0.45f))
+                ),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(14.dp)
+            .testTag("room_sync_status_card")
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(statusColor.copy(alpha = 0.15f))
+                        .border(1.dp, statusColor.copy(alpha = 0.4f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = statusTitle,
+                        tint = statusColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SkeuomorphicLed(
+                            isOn = isNetworkAvailable && pendingSyncCount == 0,
+                            color = statusColor
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = statusTitle,
+                            color = statusColor,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = statusSubtitle,
+                        color = SkeuoTextSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action Pill
+            if (!isNetworkAvailable || pendingSyncCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .shadow(2.dp, RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(statusColor)
+                        .tactilePress(pressedScale = 0.93f) {
+                            if (isNetworkAvailable && pendingSyncCount > 0) {
+                                onSyncNow()
+                            } else {
+                                onToggleSimulation?.invoke()
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                        .testTag("sync_action_button")
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (pendingSyncCount > 0) Icons.Default.Sync else Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = actionText,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SkeuoEmerald.copy(alpha = 0.12f))
+                        .border(1.dp, SkeuoEmerald.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "SYNCED",
+                        color = SkeuoEmerald,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black
                     )
                 }
             }

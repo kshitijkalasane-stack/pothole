@@ -17,6 +17,7 @@ import com.example.services.location.LocationTrackingService
 import com.example.services.location.UserLocation
 import com.example.services.sensor.LiveSensorTelemetry
 import com.example.services.sensor.SensorDetectionEngine
+import com.example.services.network.NetworkObserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,13 +45,16 @@ data class MainUiState(
     val aiSummaryText: String? = null,
     val isAiLoading: Boolean = false,
     val isRefreshing: Boolean = false,
+    val isNetworkAvailable: Boolean = true,
+    val pendingSyncCount: Int = 0,
     val alertMessage: String? = null
 )
 
 class MainViewModel(
     private val repository: PotholeRepository,
     private val sensorEngine: SensorDetectionEngine,
-    private val locationService: LocationTrackingService
+    private val locationService: LocationTrackingService,
+    private val networkObserver: NetworkObserver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -82,6 +86,22 @@ class MainViewModel(
                 _telemetry.value = telem
             }
         }
+        // Collect network availability
+        viewModelScope.launch {
+            networkObserver.isOnline.collect { online ->
+                _uiState.value = _uiState.value.copy(isNetworkAvailable = online)
+            }
+        }
+        // Collect pending sync items count from Room DB
+        viewModelScope.launch {
+            repository.pendingSyncCount.collect { count ->
+                _uiState.value = _uiState.value.copy(pendingSyncCount = count)
+            }
+        }
+    }
+
+    fun toggleNetworkSimulation() {
+        networkObserver.toggleNetworkSimulation()
     }
 
     fun loginCitizen(identifier: String, name: String) {
@@ -308,11 +328,12 @@ class MainViewModel(
         fun provideFactory(
             repository: PotholeRepository,
             sensorEngine: SensorDetectionEngine,
-            locationService: LocationTrackingService
+            locationService: LocationTrackingService,
+            networkObserver: NetworkObserver
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MainViewModel(repository, sensorEngine, locationService) as T
+                return MainViewModel(repository, sensorEngine, locationService, networkObserver) as T
             }
         }
     }

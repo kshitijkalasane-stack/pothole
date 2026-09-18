@@ -33,7 +33,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,11 +43,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.location.LocationViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,12 +104,16 @@ private fun createPotholeImageUri(context: Context): Uri {
 @Composable
 fun ManualReportScreen(
     userLocation: UserLocation,
-    onSubmitReport: (severity: Severity, description: String, roadName: String, photoUri: String?) -> Unit
+    onSubmitReport: (severity: Severity, description: String, roadName: String, photoUri: String?) -> Unit,
+    locationViewModel: LocationViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val locationState by locationViewModel.locationState.collectAsState()
 
-    var roadName by remember { mutableStateOf("Sangamner-Akole Bypass Rd, near Ghulewadi") }
+    var roadName by remember(locationState.estimatedAddress) {
+        mutableStateOf(locationState.estimatedAddress.ifBlank { "Sangamner-Akole Bypass Rd, near Ghulewadi" })
+    }
     var description by remember { mutableStateOf("") }
     var severity by remember { mutableStateOf(Severity.MEDIUM) }
     var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
@@ -577,6 +586,110 @@ fun ManualReportScreen(
                                 color = if (isSelected) Color.White else SkeuoTextSecondary,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Live Play Services GPS Coordinates Lock Box
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                .padding(14.dp)
+        ) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.MyLocation,
+                            contentDescription = "GPS Coordinates",
+                            tint = SkeuoEmerald,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "PLAY SERVICES GPS TRACKER",
+                            color = SkeuoTextTertiary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    // Refresh GPS Button
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SkeuoWellInset)
+                            .border(1.dp, SkeuoBorderLight, RoundedCornerShape(8.dp))
+                            .clickable { locationViewModel.requestSingleHighAccuracyUpdate() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("refresh_gps_coordinates_btn")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh GPS",
+                                tint = SkeuoCobalt,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (locationState.isLoading) "ACQUIRING..." else "REFRESH GPS",
+                                color = SkeuoCobalt,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .skeuomorphicInset(cornerRadius = 12.dp)
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = locationState.formattedCoordinates,
+                                color = SkeuoTextPrimary,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Locality: ${locationState.estimatedAddress}",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SkeuoEmerald.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "±%.1fm".format(locationState.accuracy),
+                                color = SkeuoEmerald,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black
                             )
                         }
                     }

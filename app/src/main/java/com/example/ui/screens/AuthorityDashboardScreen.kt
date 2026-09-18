@@ -70,6 +70,7 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.models.Pothole
 import com.example.data.models.PotholeStatus
 import com.example.data.models.Severity
+import com.example.ui.components.RoomSyncStatusCard
 import com.example.ui.components.SeverityBadge
 import com.example.ui.components.SkeuomorphicButton
 import com.example.ui.components.SkeuomorphicLed
@@ -106,6 +107,9 @@ fun AuthorityDashboardScreen(
     potholes: List<Pothole>,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
+    isNetworkAvailable: Boolean = true,
+    pendingSyncCount: Int = 0,
+    onToggleNetworkSimulation: (() -> Unit)? = null,
     aiSummary: String?,
     isAiLoading: Boolean,
     onGenerateAiSummary: () -> Unit,
@@ -162,6 +166,17 @@ fun AuthorityDashboardScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Room DB Sync & Network Status Warning Indicator
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                RoomSyncStatusCard(
+                    isNetworkAvailable = isNetworkAvailable,
+                    pendingSyncCount = pendingSyncCount,
+                    onSyncNow = onRefresh,
+                    onToggleSimulation = onToggleNetworkSimulation
+                )
+            }
+
             // Skeuomorphic Authority Console Header
             item {
                 Spacer(modifier = Modifier.height(4.dp))
