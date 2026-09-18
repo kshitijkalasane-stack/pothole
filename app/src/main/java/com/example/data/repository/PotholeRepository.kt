@@ -69,7 +69,9 @@ class PotholeRepository(
         confidence: Float,
         severity: Severity,
         zDiffMax: Float,
-        speedKmh: Float
+        speedKmh: Float,
+        userId: String = "ANON-SYSTEM",
+        userName: String = "Sensor Detection Engine"
     ): DetectionEventEntity = withContext(Dispatchers.IO) {
         val event = DetectionEventEntity(
             eventId = "DET-${UUID.randomUUID().toString().take(8).uppercase()}",
@@ -82,7 +84,9 @@ class PotholeRepository(
             source = "automatic",
             syncStatus = SyncStatus.PENDING,
             zDiffMax = zDiffMax,
-            speedKmh = speedKmh
+            speedKmh = speedKmh,
+            userId = userId,
+            reportedByName = userName
         )
         dao.insertDetection(event)
         // Check for clustering & persist cached pothole in Room
@@ -97,7 +101,9 @@ class PotholeRepository(
         description: String,
         photoUri: String?,
         roadName: String,
-        aiRiskSummary: String? = null
+        aiRiskSummary: String? = null,
+        userId: String = "ANON-COMMUTER",
+        userName: String = "Citizen Reporter"
     ): ManualReportEntity = withContext(Dispatchers.IO) {
         val report = ManualReportEntity(
             reportId = "REP-${UUID.randomUUID().toString().take(8).uppercase()}",
@@ -109,7 +115,9 @@ class PotholeRepository(
             photoUri = photoUri,
             roadName = roadName,
             syncStatus = SyncStatus.PENDING,
-            aiRiskAnalysis = aiRiskSummary
+            aiRiskAnalysis = aiRiskSummary,
+            userId = userId,
+            reportedByName = userName
         )
         dao.insertReport(report)
         clusterOrAddPothole(lat, lng, severity, 0.85f, description, roadName)

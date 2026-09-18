@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.data.repository.FirebaseAuthRepository
+
 data class MainUiState(
     val isLoggedIn: Boolean = false,
     val currentRole: UserRole = UserRole.CITIZEN,
@@ -52,6 +54,7 @@ data class MainUiState(
 
 class MainViewModel(
     private val repository: PotholeRepository,
+    private val authRepository: FirebaseAuthRepository,
     private val sensorEngine: SensorDetectionEngine,
     private val locationService: LocationTrackingService,
     private val networkObserver: NetworkObserver
@@ -74,6 +77,22 @@ class MainViewModel(
     val telemetry: StateFlow<LiveSensorTelemetry> = _telemetry.asStateFlow()
 
     init {
+        // Collect Auth Repository user updates
+        viewModelScope.launch {
+            authRepository.currentUserProfile.collect { profile ->
+                if (profile != null) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoggedIn = true,
+                        currentRole = profile.role,
+                        userProfile = profile
+                    )
+                } else if (_uiState.value.isLoggedIn) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoggedIn = false
+                    )
+                }
+            }
+        }
         // Collect sensor detections
         viewModelScope.launch {
             sensorEngine.anomalyFlow.collect { anomaly ->
@@ -105,39 +124,45 @@ class MainViewModel(
     }
 
     fun loginCitizen(identifier: String, name: String) {
-        val emailOrPhone = if (identifier.contains("@")) identifier else "$identifier@citizen.sangamner.in"
-        val profile = UserProfile(
-            userId = "CIT-${identifier.takeLast(4)}",
-            name = name.ifBlank { "Citizen Commuter" },
-            role = UserRole.CITIZEN,
-            email = emailOrPhone
-        )
-        _uiState.value = _uiState.value.copy(
-            isLoggedIn = true,
-            currentRole = UserRole.CITIZEN,
-            userProfile = profile,
-            selectedTab = 0,
-            alertMessage = "Welcome, ${profile.name}! Sensor-assisted road monitoring is ready."
-        )
+        viewModelScope.launch {
+            val email = if (identifier.contains("@")) identifier else "$identifier@citizen.sangamner.in"
+            val result = authRepository.signInWithEmail(email, "citizen123")
+            result.onSuccess { profile ->
+                _uiState.value = _uiState.value.copy(
+                    isLoggedIn = true,
+                    currentRole = UserRole.CITIZEN,
+                    userProfile = profile.copy(name = name.ifBlank { profile.name }),
+                    selectedTab = 0,
+                    alertMessage = "Welcome, ${profile.name}! Authenticated & road monitoring ready."
+                )
+            }.onFailure {
+                authRepository.signInAnonymously(name.ifBlank { "Citizen Commuter" })
+            }
+        }
     }
 
     fun loginAuthority(officerId: String, passkey: String, dept: String) {
-        val profile = UserProfile(
-            userId = officerId.ifBlank { "PWD-OFFICER" },
-            name = "Officer ($officerId)",
-            role = UserRole.AUTHORITY,
-            email = "${officerId.lowercase().replace('-', '.')}@pwd.sangamner.gov.in"
-        )
-        _uiState.value = _uiState.value.copy(
-            isLoggedIn = true,
-            currentRole = UserRole.AUTHORITY,
-            userProfile = profile,
-            authorityTab = 0,
-            alertMessage = "Authorized access granted for $dept."
-        )
+        viewModelScope.launch {
+            val email = "${officerId.lowercase().replace('-', '.')}@pwd.sangamner.gov.in"
+            val result = authRepository.signInWithEmail(email, passkey)
+            result.onSuccess { profile ->
+                val authProfile = profile.copy(
+                    role = UserRole.AUTHORITY,
+                    jurisdictionArea = dept
+                )
+                _uiState.value = _uiState.value.copy(
+                    isLoggedIn = true,
+                    currentRole = UserRole.AUTHORITY,
+                    userProfile = authProfile,
+                    authorityTab = 0,
+                    alertMessage = "Authorized access granted for $dept."
+                )
+            }
+        }
     }
 
     fun logout() {
+        authRepository.signOut()
         stopMonitoring()
         _uiState.value = _uiState.value.copy(
             isLoggedIn = false,
@@ -207,6 +232,7 @@ class MainViewModel(
 
             // Current location tag
             val loc = userLocation.value
+            val currentProfile = uiState.value.userProfile
             repository.recordDetectedAnomaly(
                 lat = loc.latitude,
                 lng = loc.longitude,
@@ -214,7 +240,9 @@ class MainViewModel(
                 confidence = confidence,
                 severity = severity,
                 zDiffMax = zDiffMax,
-                speedKmh = loc.speedKmh
+                speedKmh = loc.speedKmh,
+                userId = currentProfile.userId,
+                userName = currentProfile.name
             )
 
             kotlinx.coroutines.delay(1000)
@@ -237,16 +265,19 @@ class MainViewModel(
     ) {
         viewModelScope.launch {
             val loc = userLocation.value
+            val profile = uiState.value.userProfile
             repository.submitManualReport(
                 lat = loc.latitude,
                 lng = loc.longitude,
                 severity = severity,
                 description = description,
                 photoUri = photoUri,
-                roadName = roadName
+                roadName = roadName,
+                userId = profile.userId,
+                userName = profile.name
             )
             _uiState.value = _uiState.value.copy(
-                alertMessage = "Manual pothole report recorded offline and added to sync queue!"
+                alertMessage = "Manual pothole report recorded offline and associated with profile ${profile.name}!"
             )
         }
     }
@@ -327,13 +358,14 @@ class MainViewModel(
     companion object {
         fun provideFactory(
             repository: PotholeRepository,
+            authRepository: FirebaseAuthRepository,
             sensorEngine: SensorDetectionEngine,
             locationService: LocationTrackingService,
             networkObserver: NetworkObserver
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MainViewModel(repository, sensorEngine, locationService, networkObserver) as T
+                return MainViewModel(repository, authRepository, sensorEngine, locationService, networkObserver) as T
             }
         }
     }

@@ -396,7 +396,7 @@ fun ActivityHistoryScreen(
                                                 fontSize = 13.sp
                                             )
                                             Text(
-                                                text = dateFormat.format(Date(item.timestamp)),
+                                                text = "${dateFormat.format(Date(item.timestamp))} • ${item.reportedByName}",
                                                 color = SkeuoTextTertiary,
                                                 fontSize = 10.sp
                                             )
@@ -483,6 +483,13 @@ fun ActivityHistoryScreen(
                                         text = report.description,
                                         color = SkeuoTextSecondary,
                                         fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Reported by: ${report.reportedByName} (${report.userId.take(12)})",
+                                        color = SkeuoCobalt,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.sp
                                     )
 
                                     if (!report.photoUri.isNullOrBlank()) {

@@ -20,7 +20,9 @@ data class DetectionEventEntity(
     val source: String = "automatic",
     val syncStatus: SyncStatus = SyncStatus.PENDING,
     val zDiffMax: Float = 0f,
-    val speedKmh: Float = 0f
+    val speedKmh: Float = 0f,
+    val userId: String = "ANON-SYSTEM",
+    val reportedByName: String = "Sensor Detection Engine"
 )
 
 @Entity(tableName = "manual_reports")
@@ -35,7 +37,9 @@ data class ManualReportEntity(
     val photoUri: String? = null,
     val roadName: String = "",
     val syncStatus: SyncStatus = SyncStatus.PENDING,
-    val aiRiskAnalysis: String? = null
+    val aiRiskAnalysis: String? = null,
+    val userId: String = "ANON-COMMUTER",
+    val reportedByName: String = "Citizen Reporter"
 )
 
 @Entity(tableName = "potholes")
