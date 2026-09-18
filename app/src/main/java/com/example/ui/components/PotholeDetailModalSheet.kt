@@ -20,8 +20,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Engineering
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -29,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -38,20 +37,22 @@ import com.example.data.models.Pothole
 import com.example.data.models.PotholeStatus
 import com.example.data.models.Severity
 import com.example.data.models.UserRole
-import com.example.ui.theme.PhenomenonBorder
-import com.example.ui.theme.PhenomenonBorderActive
-import com.example.ui.theme.PhenomenonCanvas
-import com.example.ui.theme.PhenomenonCrimson
-import com.example.ui.theme.PhenomenonCyanElectric
-import com.example.ui.theme.PhenomenonElectricLime
-import com.example.ui.theme.PhenomenonEmerald
-import com.example.ui.theme.PhenomenonFlameAmber
-import com.example.ui.theme.PhenomenonPurpleNeon
-import com.example.ui.theme.PhenomenonSurface
-import com.example.ui.theme.PhenomenonSurfaceElevated
-import com.example.ui.theme.PhenomenonTextPrimary
-import com.example.ui.theme.PhenomenonTextSecondary
-import com.example.ui.theme.PhenomenonTextTertiary
+import com.example.ui.theme.SkeuoAmber
+import com.example.ui.theme.SkeuoBorderLight
+import com.example.ui.theme.SkeuoCanvas
+import com.example.ui.theme.SkeuoCobalt
+import com.example.ui.theme.SkeuoCrimson
+import com.example.ui.theme.SkeuoEmerald
+import com.example.ui.theme.SkeuoHighlight
+import com.example.ui.theme.SkeuoPurple
+import com.example.ui.theme.SkeuoShadowDark
+import com.example.ui.theme.SkeuoSurface
+import com.example.ui.theme.SkeuoSurfaceElevated
+import com.example.ui.theme.SkeuoTextInverse
+import com.example.ui.theme.SkeuoTextPrimary
+import com.example.ui.theme.SkeuoTextSecondary
+import com.example.ui.theme.SkeuoTextTertiary
+import com.example.ui.theme.SkeuoWellInset
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,9 +71,7 @@ fun PotholeDetailModalSheet(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(PhenomenonSurface)
-            .border(1.dp, PhenomenonBorderActive, RoundedCornerShape(24.dp))
+            .skeuomorphicCard(cornerRadius = 24.dp, elevation = 10.dp)
             .testTag("pothole_detail_modal")
             .padding(20.dp)
     ) {
@@ -86,7 +85,7 @@ fun PotholeDetailModalSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = pothole.potholeId,
-                        color = PhenomenonTextPrimary,
+                        color = SkeuoTextPrimary,
                         fontWeight = FontWeight.Black,
                         fontSize = 18.sp,
                         letterSpacing = (-0.2).sp
@@ -100,201 +99,166 @@ fun PotholeDetailModalSheet(
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        Icons.Default.Close,
+                        imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = PhenomenonTextTertiary
+                        tint = SkeuoTextSecondary,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            StatusBadge(status = pothole.status)
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.Top) {
+            // Address & GPS Strip
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.LocationOn,
+                    imageVector = Icons.Default.LocationOn,
                     contentDescription = null,
-                    tint = PhenomenonCyanElectric,
-                    modifier = Modifier.size(18.dp)
+                    tint = SkeuoCobalt,
+                    modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = pothole.address,
-                        color = PhenomenonTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "GPS: %.5f N, %.5f E".format(pothole.latitude, pothole.longitude),
-                        color = PhenomenonCyanElectric,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = pothole.address,
+                    color = SkeuoTextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
-            if (pothole.notes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "Notes: ${pothole.notes}",
-                    color = PhenomenonTextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
-            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "GPS Coordinates: %.5f° N, %.5f° E".format(pothole.latitude, pothole.longitude),
+                color = SkeuoTextTertiary,
+                fontSize = 11.sp
+            )
 
             Spacer(modifier = Modifier.height(14.dp))
-            // Telemetry stats row
-            Row(
+
+            // Inset Sensor Telemetry Box
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(PhenomenonCanvas)
-                    .border(1.dp, PhenomenonBorder, RoundedCornerShape(14.dp))
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceAround
+                    .skeuomorphicInset(cornerRadius = 14.dp)
+                    .padding(12.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("CONFIDENCE", color = PhenomenonTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                    Text("${(pothole.confidence * 100).toInt()}%", color = PhenomenonTextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("REPORTS", color = PhenomenonTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                    Text("${pothole.reportCount}", color = PhenomenonElectricLime, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("VERIFIED", color = PhenomenonTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                    Text("${pothole.verificationCount}", color = PhenomenonEmerald, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "INCIDENT TELEMETRY & CONFIDENCE",
+                        color = SkeuoTextTertiary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "AI Confidence: ${(pothole.confidence * 100).toInt()}%",
+                            color = SkeuoCobalt,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${pothole.reportCount} Commuter Confirmations",
+                            color = SkeuoTextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    if (pothole.notes.isNotBlank()) {
+                        Text(text = "Notes: ${pothole.notes}", color = SkeuoTextPrimary, fontSize = 11.sp)
+                    }
+                    Text(
+                        text = "First Detected: ${dateFormat.format(Date(pothole.firstDetectedAt))}",
+                        color = SkeuoTextTertiary,
+                        fontSize = 10.sp
+                    )
                 }
             }
 
-            if (pothole.assignedTo != null) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "Assigned Crew: ${pothole.assignedTo}",
-                    color = PhenomenonPurpleNeon,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Current Status Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatusBadge(status = pothole.status)
+                pothole.assignedTo?.let { crew ->
+                    Text(
+                        text = "Assigned: $crew",
+                        color = SkeuoPurple,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Action Buttons: Citizen Verification vs Authority Management
+            // Action Buttons
             if (userRole == UserRole.CITIZEN) {
-                Button(
+                SkeuomorphicButton(
                     onClick = onVerifyPothole,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("verify_pothole_btn"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PhenomenonElectricLime,
-                        contentColor = PhenomenonCanvas
-                    ),
-                    shape = RoundedCornerShape(12.dp)
+                    backgroundColor = SkeuoEmerald,
+                    cornerRadius = 14.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.ThumbUp, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "CONFIRM & VERIFY HAZARD",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 12.sp,
-                        letterSpacing = 0.8.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.ThumbUp,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "CONFIRM DEFECT AT THIS LOCATION",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             } else {
-                // Authority Options: Full lifecycle status updates
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "UPDATE CASE STATUS",
-                        color = PhenomenonTextTertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.6.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                onUpdateStatus(PotholeStatus.ASSIGNED, "Sangamner Municipal Ward 4 Quick-Patch Squad")
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("assign_crew_btn"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (pothole.status == PotholeStatus.ASSIGNED) PhenomenonPurpleNeon else PhenomenonSurfaceElevated,
-                                contentColor = if (pothole.status == PotholeStatus.ASSIGNED) Color.White else PhenomenonTextSecondary
-                            ),
-                            shape = RoundedCornerShape(12.dp)
+                // Authority Controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (pothole.status != PotholeStatus.ASSIGNED && pothole.status != PotholeStatus.IN_REPAIR && pothole.status != PotholeStatus.RESOLVED) {
+                        SkeuomorphicButton(
+                            onClick = { onUpdateStatus(PotholeStatus.ASSIGNED, "Sangamner PWD Squad #1") },
+                            backgroundColor = SkeuoPurple,
+                            cornerRadius = 12.dp,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Engineering, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Assign Crew", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                        }
-
-                        Button(
-                            onClick = {
-                                onUpdateStatus(PotholeStatus.IN_REPAIR, pothole.assignedTo ?: "Ward 4 PWD Squad")
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("in_repair_btn"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (pothole.status == PotholeStatus.IN_REPAIR) PhenomenonCyanElectric else PhenomenonSurfaceElevated,
-                                contentColor = if (pothole.status == PotholeStatus.IN_REPAIR) PhenomenonCanvas else PhenomenonTextSecondary
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("In Repair", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("ASSIGN CREW", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                onUpdateStatus(PotholeStatus.RESOLVED, pothole.assignedTo)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("resolve_pothole_btn"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = PhenomenonEmerald,
-                                contentColor = PhenomenonCanvas
-                            ),
-                            shape = RoundedCornerShape(12.dp)
+                    if (pothole.status == PotholeStatus.ASSIGNED) {
+                        SkeuomorphicButton(
+                            onClick = { onUpdateStatus(PotholeStatus.IN_REPAIR, pothole.assignedTo) },
+                            backgroundColor = SkeuoCobalt,
+                            cornerRadius = 12.dp,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text("Mark Resolved", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                            Text("START REPAIR", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
+                    }
 
-                        if (pothole.status == PotholeStatus.RESOLVED) {
-                            Button(
-                                onClick = {
-                                    onUpdateStatus(PotholeStatus.OPEN, null)
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                                    .testTag("reopen_case_btn"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = PhenomenonCrimson.copy(alpha = 0.2f),
-                                    contentColor = PhenomenonCrimson
-                                ),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Reopen Case", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
+                    if (pothole.status == PotholeStatus.IN_REPAIR) {
+                        SkeuomorphicButton(
+                            onClick = { onUpdateStatus(PotholeStatus.RESOLVED, pothole.assignedTo) },
+                            backgroundColor = SkeuoEmerald,
+                            cornerRadius = 12.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("MARK RESOLVED", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }

@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,19 +31,25 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Engineering
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,52 +58,74 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.models.Pothole
 import com.example.data.models.PotholeStatus
 import com.example.data.models.Severity
 import com.example.ui.components.SeverityBadge
+import com.example.ui.components.SkeuomorphicButton
+import com.example.ui.components.SkeuomorphicLed
 import com.example.ui.components.StatusBadge
-import com.example.ui.theme.PhenomenonBorder
-import com.example.ui.theme.PhenomenonBorderActive
-import com.example.ui.theme.PhenomenonCanvas
-import com.example.ui.theme.PhenomenonCrimson
-import com.example.ui.theme.PhenomenonCyanElectric
-import com.example.ui.theme.PhenomenonElectricLime
-import com.example.ui.theme.PhenomenonEmerald
-import com.example.ui.theme.PhenomenonFlameAmber
-import com.example.ui.theme.PhenomenonPurpleNeon
-import com.example.ui.theme.PhenomenonSurface
-import com.example.ui.theme.PhenomenonSurfaceElevated
-import com.example.ui.theme.PhenomenonTextPrimary
-import com.example.ui.theme.PhenomenonTextSecondary
-import com.example.ui.theme.PhenomenonTextTertiary
+import com.example.ui.components.skeuomorphicCard
+import com.example.ui.components.skeuomorphicInset
+import com.example.ui.components.tactilePress
+import com.example.ui.maps.PotholeClusterAnalyzer
+import com.example.ui.theme.SkeuoAmber
+import com.example.ui.theme.SkeuoBorderLight
+import com.example.ui.theme.SkeuoCanvas
+import com.example.ui.theme.SkeuoCobalt
+import com.example.ui.theme.SkeuoCrimson
+import com.example.ui.theme.SkeuoCyan
+import com.example.ui.theme.SkeuoEmerald
+import com.example.ui.theme.SkeuoHighlight
+import com.example.ui.theme.SkeuoHighlightSoft
+import com.example.ui.theme.SkeuoPurple
+import com.example.ui.theme.SkeuoShadowDark
+import com.example.ui.theme.SkeuoSurface
+import com.example.ui.theme.SkeuoSurfaceElevated
+import com.example.ui.theme.SkeuoTextInverse
+import com.example.ui.theme.SkeuoTextPrimary
+import com.example.ui.theme.SkeuoTextSecondary
+import com.example.ui.theme.SkeuoTextTertiary
+import com.example.ui.theme.SkeuoWellInset
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthorityDashboardScreen(
     potholes: List<Pothole>,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     aiSummary: String?,
     isAiLoading: Boolean,
     onGenerateAiSummary: () -> Unit,
     onSelectPothole: (Pothole) -> Unit,
     onUpdatePotholeStatus: (potholeId: String, newStatus: PotholeStatus, crew: String?) -> Unit,
+    onViewClusterMap: ((lat: Double?, lng: Double?) -> Unit)? = null,
     onSignOut: () -> Unit
 ) {
     var selectedStatusFilter by remember { mutableStateOf<PotholeStatus?>(null) }
     var selectedSeverityFilter by remember { mutableStateOf<Severity?>(null) }
     var locationQuery by remember { mutableStateOf("") }
     var selectedWardFilter by remember { mutableStateOf<String?>(null) }
+    var showExportDialog by remember { mutableStateOf(false) }
 
-    // Distinct wards/areas extracted from addresses
     val knownLocations = remember(potholes) {
         listOf("All", "Sangamner City", "Akole Bypass", "Ghulewadi", "Pune Highway", "MIDC")
+    }
+
+    val clusterAreas = remember(potholes) {
+        PotholeClusterAnalyzer.identifyClusters(potholes)
     }
 
     val filteredPotholes = remember(potholes, selectedStatusFilter, selectedSeverityFilter, locationQuery, selectedWardFilter) {
@@ -110,129 +143,179 @@ fun AuthorityDashboardScreen(
         }
     }
 
-    val openCount = potholes.count { it.status == PotholeStatus.OPEN }
-    val highPriorityCount = potholes.count { it.severity == Severity.HIGH && it.status != PotholeStatus.RESOLVED }
-    val inRepairCount = potholes.count { it.status == PotholeStatus.IN_REPAIR || it.status == PotholeStatus.ASSIGNED }
-    val resolvedCount = potholes.count { it.status == PotholeStatus.RESOLVED }
+    val openCount = remember(potholes) { potholes.count { it.status == PotholeStatus.OPEN } }
+    val highPriorityCount = remember(potholes) { potholes.count { it.severity == Severity.HIGH } }
+    val inRepairCount = remember(potholes) { potholes.count { it.status == PotholeStatus.IN_REPAIR || it.status == PotholeStatus.ASSIGNED } }
+    val resolvedCount = remember(potholes) { potholes.count { it.status == PotholeStatus.RESOLVED } }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
         modifier = Modifier
             .fillMaxSize()
-            .background(PhenomenonCanvas)
-            .padding(horizontal = 16.dp)
-            .testTag("authority_dashboard"),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(SkeuoCanvas)
+            .testTag("authority_pull_to_refresh_box")
     ) {
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            // Phenomenon Header Bar with Signature Electric Capsule & Exit Action
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(PhenomenonPurpleNeon.copy(alpha = 0.2f))
-                                .border(1.dp, PhenomenonPurpleNeon.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Engineering,
-                                contentDescription = null,
-                                tint = PhenomenonPurpleNeon,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "COMMAND CENTER",
-                            color = PhenomenonTextPrimary,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp,
-                            letterSpacing = (-0.2).sp
-                        )
-                    }
-                    Text(
-                        text = "SANGAMNER PWD // WARD DISPATCH CONSOLE",
-                        color = PhenomenonTextTertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Skeuomorphic Authority Console Header
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(PhenomenonSurfaceElevated)
-                        .border(1.dp, PhenomenonBorder, RoundedCornerShape(20.dp))
-                        .clickable { onSignOut() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .fillMaxWidth()
+                        .skeuomorphicCard(cornerRadius = 20.dp, elevation = 5.dp)
+                        .padding(16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = "Sign Out",
-                            tint = PhenomenonPurpleNeon,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Sign Out",
-                            color = PhenomenonPurpleNeon,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                SkeuomorphicLed(isOn = true, color = SkeuoPurple)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "PWD MUNICIPAL DESK",
+                                    color = SkeuoPurple,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Authority Console",
+                                color = SkeuoTextPrimary,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 20.sp,
+                                letterSpacing = (-0.3).sp
+                            )
+                            Text(
+                                text = "Sangamner Municipal Corporation // Road Works",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Manual Refresh Button
+                            Box(
+                                modifier = Modifier
+                                    .shadow(2.dp, RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SkeuoSurfaceElevated)
+                                    .border(1.dp, SkeuoBorderLight, RoundedCornerShape(12.dp))
+                                    .clickable { onRefresh() }
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
+                                    .testTag("authority_sync_btn")
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isRefreshing) {
+                                        CircularProgressIndicator(
+                                            color = SkeuoCobalt,
+                                            modifier = Modifier.size(13.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = "Sync Cloud Reports",
+                                            tint = SkeuoCobalt,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isRefreshing) "SYNCING..." else "SYNC",
+                                        color = SkeuoCobalt,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+
+                            // Exit / Sign Out Button
+                            Box(
+                                modifier = Modifier
+                                    .shadow(2.dp, RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SkeuoSurfaceElevated)
+                                    .border(1.dp, SkeuoBorderLight, RoundedCornerShape(12.dp))
+                                    .clickable { onSignOut() }
+                                    .padding(horizontal = 9.dp, vertical = 7.dp)
+                                    .testTag("authority_sign_out_btn")
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                                        contentDescription = "Sign Out",
+                                        tint = SkeuoCrimson,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "LOGOUT",
+                                        color = SkeuoCrimson,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        // Operational Metrics Grid with Phenomenon Studio Minimal Cards
+        // Skeuomorphic Metric Cards Row
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MetricCard(
+                SkeuoMetricCard(
                     title = "New Cases",
                     count = openCount.toString(),
-                    color = PhenomenonCrimson,
+                    color = SkeuoCrimson,
                     isSelected = selectedStatusFilter == PotholeStatus.OPEN,
                     modifier = Modifier.weight(1f)
                 ) {
                     selectedStatusFilter = if (selectedStatusFilter == PotholeStatus.OPEN) null else PotholeStatus.OPEN
                 }
 
-                MetricCard(
+                SkeuoMetricCard(
                     title = "High Risk",
                     count = highPriorityCount.toString(),
-                    color = PhenomenonFlameAmber,
+                    color = SkeuoAmber,
                     isSelected = selectedSeverityFilter == Severity.HIGH,
                     modifier = Modifier.weight(1f)
                 ) {
                     selectedSeverityFilter = if (selectedSeverityFilter == Severity.HIGH) null else Severity.HIGH
                 }
 
-                MetricCard(
+                SkeuoMetricCard(
                     title = "In Repair",
                     count = inRepairCount.toString(),
-                    color = PhenomenonCyanElectric,
+                    color = SkeuoCobalt,
                     isSelected = selectedStatusFilter == PotholeStatus.IN_REPAIR,
                     modifier = Modifier.weight(1f)
                 ) {
                     selectedStatusFilter = if (selectedStatusFilter == PotholeStatus.IN_REPAIR) null else PotholeStatus.IN_REPAIR
                 }
 
-                MetricCard(
+                SkeuoMetricCard(
                     title = "Resolved",
                     count = resolvedCount.toString(),
-                    color = PhenomenonEmerald,
+                    color = SkeuoEmerald,
                     isSelected = selectedStatusFilter == PotholeStatus.RESOLVED,
                     modifier = Modifier.weight(1f)
                 ) {
@@ -241,16 +324,132 @@ fun AuthorityDashboardScreen(
             }
         }
 
-        // Filter Controls Card: Priority & Location Search
+        // Google Maps Cluster Identification Banner
         item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PhenomenonSurface)
-                    .border(1.dp, PhenomenonBorder, RoundedCornerShape(20.dp))
+                    .skeuomorphicCard(cornerRadius = 18.dp, elevation = 5.dp)
                     .padding(14.dp)
-                    .testTag("authority_filter_panel")
+                    .testTag("authority_cluster_map_banner")
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(SkeuoCobalt.copy(alpha = 0.15f))
+                                    .border(1.dp, SkeuoCobalt, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Map,
+                                    contentDescription = null,
+                                    tint = SkeuoCobalt,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "GOOGLE MAPS SDK CLUSTERS",
+                                    color = SkeuoCobalt,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 0.8.sp
+                                )
+                                Text(
+                                    text = "${clusterAreas.size} Active Hotspot Zones Identified",
+                                    color = SkeuoTextPrimary,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        // Launch Map View Button
+                        if (onViewClusterMap != null) {
+                            SkeuomorphicButton(
+                                onClick = { onViewClusterMap(null, null) },
+                                backgroundColor = SkeuoCobalt,
+                                cornerRadius = 12.dp,
+                                tag = "open_cluster_map_btn"
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "OPEN MAP",
+                                        color = SkeuoTextInverse,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Navigation,
+                                        contentDescription = null,
+                                        tint = SkeuoTextInverse,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (clusterAreas.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            clusterAreas.forEach { cluster ->
+                                Box(
+                                    modifier = Modifier
+                                        .tactilePress(pressedScale = 0.95f, pressedTranslationY = 1.dp) {
+                                            onViewClusterMap?.invoke(cluster.centerLatitude, cluster.centerLongitude)
+                                        }
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(SkeuoWellInset)
+                                        .border(1.dp, SkeuoBorderLight, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(if (cluster.highRiskCount > 0) SkeuoCrimson else SkeuoAmber)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "${cluster.name} (${cluster.potholes.size})",
+                                            color = SkeuoTextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Gemini AI Smart Area Briefing Card
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                    .padding(14.dp)
+                    .testTag("ai_summary_card")
             ) {
                 Column {
                     Row(
@@ -260,42 +459,97 @@ fun AuthorityDashboardScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.FilterList,
+                                imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = null,
-                                tint = PhenomenonPurpleNeon,
-                                modifier = Modifier.size(16.dp)
+                                tint = SkeuoPurple,
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "FILTER BY PRIORITY & LOCATION",
-                                color = PhenomenonTextPrimary,
-                                fontWeight = FontWeight.Black,
+                                text = "AI ROAD DEFECT SYNTHESIS",
+                                color = SkeuoPurple,
+                                fontWeight = FontWeight.ExtraBold,
                                 fontSize = 11.sp,
-                                letterSpacing = 0.6.sp
+                                letterSpacing = 0.8.sp
                             )
                         }
 
-                        if (selectedStatusFilter != null || selectedSeverityFilter != null || locationQuery.isNotBlank() || selectedWardFilter != null) {
-                            Text(
-                                text = "Reset All",
-                                color = PhenomenonCrimson,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
+                        if (!isAiLoading) {
+                            Box(
                                 modifier = Modifier
-                                    .clickable {
-                                        selectedStatusFilter = null
-                                        selectedSeverityFilter = null
-                                        locationQuery = ""
-                                        selectedWardFilter = null
-                                    }
-                                    .testTag("reset_filters_btn")
-                            )
+                                    .shadow(2.dp, RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(SkeuoPurple)
+                                    .clickable { onGenerateAiSummary() }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                    .testTag("refresh_ai_briefing_btn")
+                            ) {
+                                Text(
+                                    text = if (aiSummary == null) "GENERATE" else "UPDATE",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Search by Road or Area
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .skeuomorphicInset(cornerRadius = 12.dp)
+                            .padding(12.dp)
+                    ) {
+                        if (isAiLoading) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = SkeuoPurple,
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Analyzing municipal sensor telemetry with Gemini AI...",
+                                    color = SkeuoTextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        } else if (aiSummary != null) {
+                            Text(
+                                text = aiSummary,
+                                color = SkeuoTextPrimary,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else {
+                            Text(
+                                text = "Tap 'Generate' to synthesize cluster hotspots, priority road triage, and dispatch recommendations.",
+                                color = SkeuoTextTertiary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Search & Filter Panel
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                    .padding(14.dp)
+            ) {
+                Column {
                     OutlinedTextField(
                         value = locationQuery,
                         onValueChange = { locationQuery = it },
@@ -305,7 +559,7 @@ fun AuthorityDashboardScreen(
                         placeholder = {
                             Text(
                                 "Search road, landmark, or case ID...",
-                                color = PhenomenonTextTertiary,
+                                color = SkeuoTextTertiary,
                                 fontSize = 12.sp
                             )
                         },
@@ -313,7 +567,7 @@ fun AuthorityDashboardScreen(
                             Icon(
                                 Icons.Default.Search,
                                 contentDescription = "Search",
-                                tint = PhenomenonCyanElectric,
+                                tint = SkeuoCobalt,
                                 modifier = Modifier.size(18.dp)
                             )
                         },
@@ -323,7 +577,7 @@ fun AuthorityDashboardScreen(
                                     Icon(
                                         Icons.Default.Clear,
                                         contentDescription = "Clear",
-                                        tint = PhenomenonTextTertiary,
+                                        tint = SkeuoTextTertiary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -331,74 +585,19 @@ fun AuthorityDashboardScreen(
                         },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = PhenomenonSurfaceElevated,
-                            unfocusedContainerColor = PhenomenonSurfaceElevated,
-                            focusedBorderColor = PhenomenonPurpleNeon,
-                            unfocusedBorderColor = PhenomenonBorder,
-                            focusedTextColor = PhenomenonTextPrimary,
-                            unfocusedTextColor = PhenomenonTextPrimary
+                            focusedContainerColor = SkeuoWellInset,
+                            unfocusedContainerColor = SkeuoWellInset,
+                            focusedBorderColor = SkeuoCobalt,
+                            unfocusedBorderColor = SkeuoBorderLight,
+                            focusedTextColor = SkeuoTextPrimary,
+                            unfocusedTextColor = SkeuoTextPrimary
                         ),
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Priority Filter Pills
-                    Text(
-                        text = "PRIORITY / SEVERITY",
-                        color = PhenomenonTextTertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        PriorityPill(
-                            label = "All",
-                            color = PhenomenonTextSecondary,
-                            isSelected = selectedSeverityFilter == null,
-                            onClick = { selectedSeverityFilter = null }
-                        )
-                        PriorityPill(
-                            label = "High Priority",
-                            color = PhenomenonCrimson,
-                            isSelected = selectedSeverityFilter == Severity.HIGH,
-                            onClick = {
-                                selectedSeverityFilter = if (selectedSeverityFilter == Severity.HIGH) null else Severity.HIGH
-                            }
-                        )
-                        PriorityPill(
-                            label = "Medium",
-                            color = PhenomenonFlameAmber,
-                            isSelected = selectedSeverityFilter == Severity.MEDIUM,
-                            onClick = {
-                                selectedSeverityFilter = if (selectedSeverityFilter == Severity.MEDIUM) null else Severity.MEDIUM
-                            }
-                        )
-                        PriorityPill(
-                            label = "Low",
-                            color = PhenomenonCyanElectric,
-                            isSelected = selectedSeverityFilter == Severity.LOW,
-                            onClick = {
-                                selectedSeverityFilter = if (selectedSeverityFilter == Severity.LOW) null else Severity.LOW
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Location Ward Quick Badges
-                    Text(
-                        text = "MUNICIPAL CORRIDORS",
-                        color = PhenomenonTextTertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.5.sp
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -409,409 +608,163 @@ fun AuthorityDashboardScreen(
                             val isSelected = (selectedWardFilter == null && ward == "All") || selectedWardFilter == ward
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(if (isSelected) PhenomenonPurpleNeon.copy(alpha = 0.2f) else PhenomenonSurfaceElevated)
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) PhenomenonPurpleNeon else PhenomenonBorder,
-                                        RoundedCornerShape(20.dp)
-                                    )
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isSelected) SkeuoCobalt else SkeuoWellInset)
+                                    .border(1.dp, if (isSelected) SkeuoCobalt else SkeuoBorderLight, RoundedCornerShape(14.dp))
                                     .clickable {
                                         selectedWardFilter = if (ward == "All" || selectedWardFilter == ward) null else ward
                                     }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.LocationOn,
-                                        contentDescription = null,
-                                        tint = if (isSelected) PhenomenonPurpleNeon else PhenomenonTextTertiary,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = ward,
-                                        color = if (isSelected) PhenomenonTextPrimary else PhenomenonTextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Gemini AI Smart Area Briefing Card with Cyber Violet Accents
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(PhenomenonSurface)
-                    .border(1.dp, PhenomenonPurpleNeon.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(PhenomenonPurpleNeon.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = PhenomenonPurpleNeon,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "GEMINI MUNICIPAL BRIEFING",
-                                color = PhenomenonPurpleNeon,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 11.sp,
-                                letterSpacing = 0.8.sp
-                            )
-                        }
-
-                        Button(
-                            onClick = onGenerateAiSummary,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = PhenomenonPurpleNeon,
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            enabled = !isAiLoading
-                        ) {
-                            if (isAiLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
                                 Text(
-                                    "Generate Briefing",
+                                    text = ward,
+                                    color = if (isSelected) Color.White else SkeuoTextSecondary,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = aiSummary ?: "Tap 'Generate Briefing' to create an AI-orchestrated operational summary of open cases, severity distribution, and recommended crew allocations for the Sangamner municipal grid.",
-                        color = PhenomenonTextSecondary,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
                 }
             }
         }
 
-        // Work Queue Header
+        // Section Title: Incident Dispatch Queue
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Reported Potholes (${filteredPotholes.size})",
-                    color = PhenomenonTextPrimary,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 15.sp,
-                    letterSpacing = (-0.2).sp
-                )
-                if (selectedStatusFilter != null || selectedSeverityFilter != null || locationQuery.isNotBlank() || selectedWardFilter != null) {
-                    Text(
-                        text = "Filters Active",
-                        color = PhenomenonCyanElectric,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Engineering,
+                        contentDescription = null,
+                        tint = SkeuoCobalt,
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "INCIDENT DISPATCH QUEUE",
+                        color = SkeuoTextPrimary,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 12.sp,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            color = SkeuoCobalt,
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Syncing...",
+                            color = SkeuoCobalt,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Text(
+                            text = "${filteredPotholes.size} records • Pull down to sync",
+                            color = SkeuoTextTertiary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
 
-        if (filteredPotholes.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(PhenomenonSurface)
-                        .padding(28.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = PhenomenonTextTertiary,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No potholes match current filter criteria",
-                            color = PhenomenonTextSecondary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Try clearing search or toggling priority filters",
-                            color = PhenomenonTextTertiary,
-                            fontSize = 11.sp
-                        )
-                    }
+        items(filteredPotholes, key = { it.potholeId }) { pothole ->
+            SkeuoAuthorityPotholeCard(
+                pothole = pothole,
+                onSelect = { onSelectPothole(pothole) },
+                onUpdateStatus = { newStatus, crew ->
+                    onUpdatePotholeStatus(pothole.potholeId, newStatus, crew)
                 }
-            }
-        } else {
-            items(filteredPotholes, key = { it.potholeId }) { pothole ->
-                AuthorityPotholeCard(
-                    pothole = pothole,
-                    onClick = { onSelectPothole(pothole) },
-                    onQuickUpdateStatus = { newStatus ->
-                        val crew = if (newStatus == PotholeStatus.ASSIGNED) "Ward 4 Quick-Patch Squad" else null
-                        onUpdatePotholeStatus(pothole.potholeId, newStatus, crew)
-                    }
-                )
-            }
+            )
         }
 
         item {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(84.dp))
         }
     }
-}
 
-@Composable
-private fun PriorityPill(
-    label: String,
-    color: Color,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
+    // Floating Action Button for CSV Export
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isSelected) color.copy(alpha = 0.2f) else PhenomenonSurfaceElevated)
-            .border(
-                1.dp,
-                if (isSelected) color else PhenomenonBorder,
-                RoundedCornerShape(14.dp)
+            .align(Alignment.BottomEnd)
+            .padding(end = 18.dp, bottom = 22.dp)
+            .tactilePress(pressedScale = 0.92f, pressedTranslationY = 2.dp) {
+                showExportDialog = true
+            }
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = SkeuoCobalt.copy(alpha = 0.35f),
+                spotColor = SkeuoShadowDark.copy(alpha = 0.5f)
             )
-            .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        SkeuoCobalt,
+                        Color(0xFF1E3A8A)
+                    )
+                )
+            )
+            .border(
+                width = 1.2.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        SkeuoHighlightSoft,
+                        Color(0xFF60A5FA),
+                        Color(0xFF1E3A8A)
+                    )
+                ),
+                shape = RoundedCornerShape(28.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag("export_csv_fab")
     ) {
-        Text(
-            text = label,
-            color = if (isSelected) color else PhenomenonTextSecondary,
-            fontSize = 10.sp,
-            fontWeight = if (isSelected) FontWeight.Black else FontWeight.SemiBold
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.FileDownload,
+                contentDescription = "Export CSV Report",
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = "EXPORT CSV (${filteredPotholes.size})",
+                color = Color.White,
+                fontWeight = FontWeight.Black,
+                fontSize = 12.sp,
+                letterSpacing = 0.4.sp
+            )
+        }
+    }
+    }
+
+    if (showExportDialog) {
+        ExportCsvDialog(
+            potholes = filteredPotholes,
+            selectedStatusFilter = selectedStatusFilter,
+            selectedSeverityFilter = selectedSeverityFilter,
+            selectedWardFilter = selectedWardFilter,
+            onDismiss = { showExportDialog = false }
         )
     }
 }
 
 @Composable
-private fun AuthorityPotholeCard(
-    pothole: Pothole,
-    onClick: () -> Unit,
-    onQuickUpdateStatus: (PotholeStatus) -> Unit
-) {
-    val dateFormat = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(PhenomenonSurface)
-            .border(1.dp, PhenomenonBorder, RoundedCornerShape(18.dp))
-            .clickable { onClick() }
-            .padding(16.dp)
-            .testTag("authority_pothole_card_${pothole.potholeId}")
-    ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = pothole.potholeId,
-                        fontWeight = FontWeight.Black,
-                        color = PhenomenonTextPrimary,
-                        fontSize = 14.sp,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-                SeverityBadge(severity = pothole.severity)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = pothole.address,
-                color = PhenomenonTextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            if (pothole.notes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = pothole.notes,
-                    color = PhenomenonTextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 2,
-                    lineHeight = 16.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                StatusBadge(status = pothole.status)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = PhenomenonCyanElectric,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "%.4f, %.4f".format(pothole.latitude, pothole.longitude),
-                        color = PhenomenonTextTertiary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-
-            // Quick Status Actions directly on the card
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (pothole.status != PotholeStatus.ASSIGNED && pothole.status != PotholeStatus.RESOLVED) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PhenomenonPurpleNeon.copy(alpha = 0.15f))
-                            .border(1.dp, PhenomenonPurpleNeon.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .clickable { onQuickUpdateStatus(PotholeStatus.ASSIGNED) }
-                            .padding(vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Engineering,
-                                contentDescription = null,
-                                tint = PhenomenonPurpleNeon,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Assign Crew",
-                                color = PhenomenonPurpleNeon,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                if (pothole.status != PotholeStatus.IN_REPAIR && pothole.status != PotholeStatus.RESOLVED) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PhenomenonCyanElectric.copy(alpha = 0.15f))
-                            .border(1.dp, PhenomenonCyanElectric.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .clickable { onQuickUpdateStatus(PotholeStatus.IN_REPAIR) }
-                            .padding(vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "In Repair",
-                            color = PhenomenonCyanElectric,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                if (pothole.status != PotholeStatus.RESOLVED) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PhenomenonEmerald.copy(alpha = 0.15f))
-                            .border(1.dp, PhenomenonEmerald.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .clickable { onQuickUpdateStatus(PotholeStatus.RESOLVED) }
-                            .padding(vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = PhenomenonEmerald,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Resolve",
-                                color = PhenomenonEmerald,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PhenomenonSurfaceElevated)
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "COMPLETED // REOPEN CASE",
-                            color = PhenomenonTextTertiary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { onQuickUpdateStatus(PotholeStatus.OPEN) }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MetricCard(
+private fun SkeuoMetricCard(
     title: String,
     count: String,
     color: Color,
@@ -821,33 +774,488 @@ private fun MetricCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(PhenomenonSurface)
-            .border(
-                1.5.dp,
-                if (isSelected) color else PhenomenonBorder,
-                RoundedCornerShape(16.dp)
+            .tactilePress(pressedScale = 0.94f, pressedTranslationY = 2.dp) { onClick() }
+            .shadow(
+                elevation = if (isSelected) 1.dp else 4.dp,
+                shape = RoundedCornerShape(14.dp),
+                ambientColor = color.copy(alpha = 0.25f)
             )
-            .clickable { onClick() }
-            .padding(vertical = 12.dp, horizontal = 8.dp),
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.verticalGradient(
+                    if (isSelected) {
+                        listOf(color.copy(alpha = 0.15f), color.copy(alpha = 0.25f))
+                    } else {
+                        listOf(Color.White, Color(0xFFF6F9FD))
+                    }
+                )
+            )
+            .border(
+                1.2.dp,
+                if (isSelected) color else SkeuoBorderLight,
+                RoundedCornerShape(14.dp)
+            )
+            .padding(10.dp)
+            .testTag("metric_${title.lowercase().replace(' ', '_')}"),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = count,
-                color = color,
+                color = if (isSelected) color else SkeuoTextPrimary,
                 fontWeight = FontWeight.Black,
-                fontSize = 20.sp,
-                letterSpacing = (-0.5).sp
+                fontSize = 18.sp
             )
-            Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = title.uppercase(),
-                color = PhenomenonTextTertiary,
+                text = title,
+                color = SkeuoTextSecondary,
                 fontSize = 9.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.5.sp
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
+        }
+    }
+}
+
+@Composable
+private fun SkeuoAuthorityPotholeCard(
+    pothole: Pothole,
+    onSelect: () -> Unit,
+    onUpdateStatus: (PotholeStatus, String?) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .tactilePress(pressedScale = 0.975f, pressedTranslationY = 1.5.dp) { onSelect() }
+            .skeuomorphicCard(cornerRadius = 16.dp, elevation = 4.dp)
+            .padding(14.dp)
+            .testTag("authority_pothole_${pothole.potholeId}")
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(SkeuoWellInset)
+                            .border(1.dp, SkeuoBorderLight, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = when (pothole.severity) {
+                                Severity.HIGH -> SkeuoCrimson
+                                Severity.MEDIUM -> SkeuoAmber
+                                Severity.LOW -> SkeuoEmerald
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = pothole.potholeId,
+                            color = SkeuoTextPrimary,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = pothole.address,
+                            color = SkeuoTextSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+                SeverityBadge(severity = pothole.severity)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Action Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatusBadge(status = pothole.status)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (pothole.status == PotholeStatus.OPEN || pothole.status == PotholeStatus.UNDER_VERIFICATION) {
+                        Box(
+                            modifier = Modifier
+                                .tactilePress(pressedScale = 0.92f, pressedTranslationY = 1.dp) {
+                                    onUpdateStatus(PotholeStatus.ASSIGNED, "Sangamner PWD Squad #1")
+                                }
+                                .shadow(2.dp, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SkeuoPurple)
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "ASSIGN SQUAD",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    } else if (pothole.status == PotholeStatus.ASSIGNED) {
+                        Box(
+                            modifier = Modifier
+                                .tactilePress(pressedScale = 0.92f, pressedTranslationY = 1.dp) {
+                                    onUpdateStatus(PotholeStatus.IN_REPAIR, pothole.assignedTo)
+                                }
+                                .shadow(2.dp, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SkeuoCobalt)
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "START REPAIR",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    } else if (pothole.status == PotholeStatus.IN_REPAIR) {
+                        Box(
+                            modifier = Modifier
+                                .tactilePress(pressedScale = 0.92f, pressedTranslationY = 1.dp) {
+                                    onUpdateStatus(PotholeStatus.RESOLVED, pothole.assignedTo)
+                                }
+                                .shadow(2.dp, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SkeuoEmerald)
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "RESOLVE",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Generates a clean, standard CSV payload from the filtered list of potholes.
+ */
+private fun generatePotholesCsv(potholes: List<Pothole>): String {
+    val header = "Pothole_ID,Severity,Status,Latitude,Longitude,Address,Confidence,Reports_Count,Assigned_Squad,Created_At,Notes"
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+    val rows = potholes.map { p ->
+        val dateStr = try {
+            dateFormat.format(Date(p.firstDetectedAt))
+        } catch (e: Exception) {
+            ""
+        }
+        val safeNotes = p.notes.replace("\"", "\"\"").replace("\n", " ")
+        val safeAddress = p.address.replace("\"", "\"\"").replace("\n", " ")
+        val squad = (p.assignedTo ?: "Unassigned").replace("\"", "\"\"")
+
+        "\"${p.potholeId}\",\"${p.severity.name}\",\"${p.status.name}\",${p.latitude},${p.longitude},\"$safeAddress\",${p.confidence},${p.reportCount},\"$squad\",\"$dateStr\",\"$safeNotes\""
+    }
+    return (listOf(header) + rows).joinToString("\n")
+}
+
+@Composable
+private fun ExportCsvDialog(
+    potholes: List<Pothole>,
+    selectedStatusFilter: PotholeStatus?,
+    selectedSeverityFilter: Severity?,
+    selectedWardFilter: String?,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val csvContent = remember(potholes) { generatePotholesCsv(potholes) }
+    val timestamp = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) }
+    val filename = "sangamner_potholes_report_$timestamp.csv"
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(SkeuoSurfaceElevated)
+                .border(1.2.dp, SkeuoBorderLight, RoundedCornerShape(20.dp))
+                .shadow(12.dp, RoundedCornerShape(20.dp))
+                .padding(20.dp)
+                .testTag("export_csv_dialog")
+        ) {
+            Column {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(SkeuoCobalt.copy(alpha = 0.15f))
+                                .border(1.dp, SkeuoCobalt.copy(alpha = 0.3f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = null,
+                                tint = SkeuoCobalt,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Export CSV Report",
+                                color = SkeuoTextPrimary,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = "Filtered Dataset Export",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = SkeuoTextTertiary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Inset metadata chamber
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .skeuomorphicInset(cornerRadius = 12.dp)
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Filtered Count:",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "${potholes.size} records",
+                                color = SkeuoTextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Status Filter:",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = selectedStatusFilter?.label ?: "All Statuses",
+                                color = SkeuoCobalt,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Severity Filter:",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = selectedSeverityFilter?.label ?: "All Severities",
+                                color = SkeuoAmber,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Ward / Zone:",
+                                color = SkeuoTextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = selectedWardFilter ?: "All",
+                                color = SkeuoTextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Target Filename:",
+                                color = SkeuoTextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = filename,
+                                color = SkeuoTextTertiary,
+                                fontSize = 10.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Columns Included label
+                Text(
+                    text = "COLUMNS INCLUDED",
+                    color = SkeuoTextTertiary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = "ID, Severity, Status, Latitude, Longitude, Address, Confidence, Report Count, Assigned Squad, Created At, Notes",
+                    color = SkeuoTextSecondary,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Copy to Clipboard Button
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .tactilePress(pressedScale = 0.94f, pressedTranslationY = 1.5.dp) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Potholes CSV", csvContent)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "CSV copied to clipboard (${potholes.size} records)", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                            .shadow(2.dp, RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SkeuoWellInset)
+                            .border(1.dp, SkeuoBorderLight, RoundedCornerShape(12.dp))
+                            .padding(vertical = 10.dp)
+                            .testTag("copy_csv_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = SkeuoTextPrimary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Copy CSV",
+                                color = SkeuoTextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Share CSV Report Intent Button
+                    Box(
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .tactilePress(pressedScale = 0.94f, pressedTranslationY = 1.5.dp) {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Sangamner Municipal Potholes Report ($filename)")
+                                putExtra(Intent.EXTRA_TEXT, csvContent)
+                            }
+                            val shareIntent = Intent.createChooser(sendIntent, "Export Potholes CSV Report")
+                            context.startActivity(shareIntent)
+                            Toast.makeText(context, "Exporting ${potholes.size} potholes report...", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                            .shadow(3.dp, RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(SkeuoCobalt, Color(0xFF1E3A8A))
+                                )
+                            )
+                            .border(1.dp, SkeuoHighlightSoft, RoundedCornerShape(12.dp))
+                            .padding(vertical = 10.dp)
+                            .testTag("share_csv_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Share Report",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

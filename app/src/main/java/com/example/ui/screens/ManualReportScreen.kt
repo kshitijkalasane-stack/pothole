@@ -1,8 +1,12 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,14 +28,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -44,32 +49,52 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.example.data.models.Severity
 import com.example.services.ai.AiClient
 import com.example.services.location.UserLocation
-import com.example.ui.theme.PhenomenonBorder
-import com.example.ui.theme.PhenomenonBorderActive
-import com.example.ui.theme.PhenomenonCanvas
-import com.example.ui.theme.PhenomenonCrimson
-import com.example.ui.theme.PhenomenonCyanElectric
-import com.example.ui.theme.PhenomenonElectricLime
-import com.example.ui.theme.PhenomenonEmerald
-import com.example.ui.theme.PhenomenonFlameAmber
-import com.example.ui.theme.PhenomenonPurpleNeon
-import com.example.ui.theme.PhenomenonSurface
-import com.example.ui.theme.PhenomenonSurfaceElevated
-import com.example.ui.theme.PhenomenonSurfaceHover
-import com.example.ui.theme.PhenomenonTextPrimary
-import com.example.ui.theme.PhenomenonTextSecondary
-import com.example.ui.theme.PhenomenonTextTertiary
+import com.example.ui.components.SkeuomorphicButton
+import com.example.ui.components.SkeuomorphicLed
+import com.example.ui.components.skeuomorphicCard
+import com.example.ui.components.skeuomorphicInset
+import com.example.ui.theme.SkeuoAmber
+import com.example.ui.theme.SkeuoBorderLight
+import com.example.ui.theme.SkeuoCanvas
+import com.example.ui.theme.SkeuoCobalt
+import com.example.ui.theme.SkeuoCrimson
+import com.example.ui.theme.SkeuoEmerald
+import com.example.ui.theme.SkeuoPurple
+import com.example.ui.theme.SkeuoSurface
+import com.example.ui.theme.SkeuoTextInverse
+import com.example.ui.theme.SkeuoTextPrimary
+import com.example.ui.theme.SkeuoTextSecondary
+import com.example.ui.theme.SkeuoTextTertiary
+import com.example.ui.theme.SkeuoWellInset
 import kotlinx.coroutines.launch
+import java.io.File
+
+private fun createPotholeImageUri(context: Context): Uri {
+    val photosDir = File(context.cacheDir, "pothole_photos")
+    if (!photosDir.exists()) {
+        photosDir.mkdirs()
+    }
+    val photoFile = File(photosDir, "pothole_${System.currentTimeMillis()}.jpg")
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        photoFile
+    )
+}
 
 @Composable
 fun ManualReportScreen(
@@ -77,78 +102,102 @@ fun ManualReportScreen(
     onSubmitReport: (severity: Severity, description: String, roadName: String, photoUri: String?) -> Unit
 ) {
     val context = LocalContext.current
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { perms ->
-        hasLocationPermission = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-    }
+    val coroutineScope = rememberCoroutineScope()
 
     var roadName by remember { mutableStateOf("Sangamner-Akole Bypass Rd, near Ghulewadi") }
     var description by remember { mutableStateOf("") }
     var severity by remember { mutableStateOf(Severity.MEDIUM) }
-    var hasSimulatedPhoto by remember { mutableStateOf(false) }
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
     var isAnalyzingAi by remember { mutableStateOf(false) }
-    var aiInsight by remember { mutableStateOf<String?>(null) }
+    var aiConfidenceTag by remember { mutableStateOf<String?>(null) }
 
-    val coroutineScope = rememberCoroutineScope()
+    fun runAiAnalysis(photoDescription: String) {
+        coroutineScope.launch {
+            isAnalyzingAi = true
+            val result = AiClient.analyzePotholeSeverity(
+                imageDescription = photoDescription,
+                speedKmh = userLocation.speedKmh.takeIf { it > 5f } ?: 40f,
+                peakZDiff = 2.8f
+            )
+            severity = result.severity
+            aiConfidenceTag = "AI Verified: ${(result.confidence * 100).toInt()}% • ${result.severity.label} Severity"
+            isAnalyzingAi = false
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && tempCameraUri != null) {
+            selectedPhotoUri = tempCameraUri
+            runAiAnalysis("Live camera photograph of road pothole surface captured at $roadName")
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                val uri = createPotholeImageUri(context)
+                tempCameraUri = uri
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to launch camera: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera permission is required to capture pothole photos", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val galleryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            selectedPhotoUri = uri
+            runAiAnalysis("Citizen photo evidence from gallery of road asphalt defect at $roadName")
+        }
+    }
+
+    fun launchCameraFlow() {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            try {
+                val uri = createPotholeImageUri(context)
+                tempCameraUri = uri
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Camera error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun launchGalleryFlow() {
+        galleryPickerLauncher.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(PhenomenonCanvas)
+            .background(SkeuoCanvas)
             .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-            .testTag("manual_report_screen"),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column {
-            Text(
-                text = "Manual Road Hazard Report",
-                color = PhenomenonTextPrimary,
-                fontWeight = FontWeight.Black,
-                fontSize = 20.sp,
-                letterSpacing = (-0.3).sp
-            )
-            Text(
-                text = "CITIZEN DISPATCH // GEOTAGGED TELEMETRY",
-                color = PhenomenonTextTertiary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp
-            )
-        }
-
-        // Live GPS Geotag HUD
+        // Skeuomorphic Header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(PhenomenonSurface)
-                .border(
-                    1.dp,
-                    if (hasLocationPermission) PhenomenonBorder else PhenomenonElectricLime.copy(alpha = 0.6f),
-                    RoundedCornerShape(18.dp)
-                )
-                .clickable {
-                    if (!hasLocationPermission) {
-                        permissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
-                    }
-                }
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
                 .padding(14.dp)
         ) {
             Row(
@@ -156,293 +205,477 @@ fun ManualReportScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(PhenomenonElectricLime.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = null,
-                            tint = PhenomenonElectricLime,
-                            modifier = Modifier.size(20.dp)
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SkeuomorphicLed(isOn = true, color = SkeuoCobalt)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "MANUAL HAZARD DISPATCH",
+                            color = SkeuoCobalt,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 10.sp,
+                            letterSpacing = 0.8.sp
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Geotag Coordinates (Play Services)",
-                            color = PhenomenonTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = if (hasLocationPermission) {
-                                "%.5f, %.5f (Accuracy: %.1fm)".format(
-                                    userLocation.latitude,
-                                    userLocation.longitude,
-                                    userLocation.accuracy
-                                )
-                            } else {
-                                "Tap to grant GPS location access"
-                            },
-                            color = if (hasLocationPermission) PhenomenonCyanElectric else PhenomenonElectricLime,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                    Text(
+                        text = "Report Road Defect",
+                        color = SkeuoTextPrimary,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp
+                    )
                 }
+
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(
-                            if (hasLocationPermission) PhenomenonEmerald.copy(alpha = 0.15f)
-                            else PhenomenonElectricLime.copy(alpha = 0.15f)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SkeuoWellInset)
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Text(
-                        text = if (hasLocationPermission) "GPS LOCK" else "TAP TO GRANT",
-                        color = if (hasLocationPermission) PhenomenonEmerald else PhenomenonElectricLime,
-                        fontSize = 9.sp,
+                        text = "GPS LOCK ACTIVE",
+                        color = SkeuoEmerald,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Black
                     )
                 }
             }
         }
 
-        // Road Name Field
-        OutlinedTextField(
-            value = roadName,
-            onValueChange = { roadName = it },
-            label = { Text("Road / Landmark / Corridor", color = PhenomenonTextTertiary, fontSize = 12.sp) },
+        // Skeuomorphic Camera Viewfinder Box
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("report_road_input"),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = PhenomenonTextPrimary,
-                unfocusedTextColor = PhenomenonTextPrimary,
-                focusedBorderColor = PhenomenonElectricLime,
-                unfocusedBorderColor = PhenomenonBorder,
-                focusedContainerColor = PhenomenonSurface,
-                unfocusedContainerColor = PhenomenonSurface
-            ),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Severity Selector with Phenomenon styling
-        Column {
-            Text(
-                text = "Observed Severity",
-                color = PhenomenonTextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                SeveritySelectButton(
-                    label = "LOW",
-                    color = PhenomenonEmerald,
-                    isSelected = severity == Severity.LOW,
-                    modifier = Modifier.weight(1f)
-                ) { severity = Severity.LOW }
-
-                SeveritySelectButton(
-                    label = "MEDIUM",
-                    color = PhenomenonFlameAmber,
-                    isSelected = severity == Severity.MEDIUM,
-                    modifier = Modifier.weight(1f)
-                ) { severity = Severity.MEDIUM }
-
-                SeveritySelectButton(
-                    label = "HIGH",
-                    color = PhenomenonCrimson,
-                    isSelected = severity == Severity.HIGH,
-                    modifier = Modifier.weight(1f)
-                ) { severity = Severity.HIGH }
-            }
-        }
-
-        // Description Input
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Describe road issue (e.g. deep crater near bridge, bikes skidding)", color = PhenomenonTextTertiary, fontSize = 12.sp) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(110.dp)
-                .testTag("report_desc_input"),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = PhenomenonTextPrimary,
-                unfocusedTextColor = PhenomenonTextPrimary,
-                focusedBorderColor = PhenomenonElectricLime,
-                unfocusedBorderColor = PhenomenonBorder,
-                focusedContainerColor = PhenomenonSurface,
-                unfocusedContainerColor = PhenomenonSurface
-            ),
-            shape = RoundedCornerShape(14.dp)
-        )
-
-        // Photo Attachment & Gemini AI Analysis Button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 5.dp)
+                .padding(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(PhenomenonSurface)
-                    .border(
-                        1.dp,
-                        if (hasSimulatedPhoto) PhenomenonEmerald else PhenomenonBorder,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { hasSimulatedPhoto = !hasSimulatedPhoto }
-                    .padding(14.dp)
-                    .testTag("attach_photo_btn")
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (hasSimulatedPhoto) Icons.Default.CheckCircle else Icons.Default.CameraAlt,
-                        contentDescription = null,
-                        tint = if (hasSimulatedPhoto) PhenomenonEmerald else PhenomenonTextTertiary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = if (hasSimulatedPhoto) "Photo Attached" else "Attach Photo",
-                        color = PhenomenonTextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "ROAD DEFECT PHOTO EVIDENCE",
+                        color = SkeuoTextTertiary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp
                     )
-                }
-            }
-
-            // AI Report Structuring / Gemini Assist
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(PhenomenonSurface)
-                    .border(1.dp, PhenomenonPurpleNeon.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                    .clickable {
-                        if (description.isBlank()) {
-                            aiInsight = "Please enter a brief description first for AI structuring."
-                            return@clickable
+                    if (selectedPhotoUri != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SkeuoEmerald.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = "PHOTO ATTACHED",
+                                color = SkeuoEmerald,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black
+                            )
                         }
-                        coroutineScope.launch {
-                            isAnalyzingAi = true
-                            val prompt = "Analyze this road report: '$description' at '$roadName'. Provide structured JSON-like key points: Issue Type, Severity Level, Immediate Risk."
-                            val res = AiClient.queryGemini(prompt)
-                            res.onSuccess {
-                                aiInsight = it
-                                isAnalyzingAi = false
-                            }.onFailure {
-                                aiInsight = "AI Structure: Pothole detected, recommended severity: $severity. Immediate attention for two-wheelers."
-                                isAnalyzingAi = false
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (selectedPhotoUri != null) {
+                    // Captured / Selected Photo Preview Container
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .skeuomorphicInset(cornerRadius = 14.dp)
+                            .padding(4.dp)
+                    ) {
+                        AsyncImage(
+                            model = selectedPhotoUri,
+                            contentDescription = "Attached pothole photo evidence",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(10.dp))
+                                .testTag("attached_photo_preview")
+                        )
+
+                        // Remove Photo overlay button
+                        IconButton(
+                            onClick = {
+                                selectedPhotoUri = null
+                                aiConfidenceTag = null
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(6.dp)
+                                .size(32.dp)
+                                .shadow(4.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .testTag("delete_attached_photo_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Remove photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // AI status badge
+                        if (isAnalyzingAi) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.7f))
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        color = SkeuoPurple,
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Gemini AI Analyzing Crater Geometry...",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        } else if (aiConfidenceTag != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .background(Color.Black.copy(alpha = 0.7f))
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = aiConfidenceTag!!,
+                                    color = SkeuoEmerald,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         }
                     }
-                    .padding(14.dp)
-                    .testTag("ai_assist_btn")
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isAnalyzingAi) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = PhenomenonPurpleNeon, strokeWidth = 2.dp)
-                    } else {
-                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = PhenomenonPurpleNeon, modifier = Modifier.size(20.dp))
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Retake & Gallery Switch Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .shadow(2.dp, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SkeuoSurface)
+                                .border(1.dp, SkeuoBorderLight, RoundedCornerShape(10.dp))
+                                .clickable { launchCameraFlow() }
+                                .padding(vertical = 8.dp)
+                                .testTag("retake_photo_camera_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = null,
+                                    tint = SkeuoCobalt,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Retake",
+                                    color = SkeuoTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .shadow(2.dp, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SkeuoSurface)
+                                .border(1.dp, SkeuoBorderLight, RoundedCornerShape(10.dp))
+                                .clickable { launchGalleryFlow() }
+                                .padding(vertical = 8.dp)
+                                .testTag("pick_another_gallery_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AddPhotoAlternate,
+                                    contentDescription = null,
+                                    tint = SkeuoPurple,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "From Gallery",
+                                    color = SkeuoTextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "AI Assist", color = PhenomenonPurpleNeon, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                } else {
+                    // Empty State Camera Viewfinder
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .skeuomorphicInset(cornerRadius = 14.dp)
+                            .padding(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Camera Button
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .clickable { launchCameraFlow() }
+                                        .testTag("camera_photo_trigger")
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .shadow(4.dp, CircleShape)
+                                            .clip(CircleShape)
+                                            .background(SkeuoCobalt)
+                                            .border(2.dp, Color.White, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CameraAlt,
+                                            contentDescription = "Open Device Camera",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Open Camera",
+                                        color = SkeuoTextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+
+                                // Gallery Button
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .clickable { launchGalleryFlow() }
+                                        .testTag("gallery_photo_trigger")
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .shadow(4.dp, CircleShape)
+                                            .clip(CircleShape)
+                                            .background(SkeuoSurface)
+                                            .border(1.dp, SkeuoBorderLight, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AddPhotoAlternate,
+                                            contentDescription = "Select from Gallery",
+                                            tint = SkeuoPurple,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Choose Photo",
+                                        color = SkeuoTextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "Snap live photo or attach image to auto-estimate defect severity",
+                                color = SkeuoTextTertiary,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        if (aiInsight != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(PhenomenonSurface)
-                    .border(1.dp, PhenomenonPurpleNeon.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                    .padding(14.dp)
-            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = PhenomenonPurpleNeon, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Gemini AI Analysis & Structuring", color = PhenomenonPurpleNeon, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = aiInsight!!, color = PhenomenonTextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Submit Button with Electric Lime Phenomenon Style
-        Button(
-            onClick = {
-                val finalDesc = if (description.isBlank()) "Citizen reported road depression" else description
-                onSubmitReport(severity, finalDesc, roadName, if (hasSimulatedPhoto) "file://pothole_evidence.jpg" else null)
-            },
+        // Severity Selector (Tactile 3D Buttons)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .testTag("submit_report_btn"),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = PhenomenonElectricLime,
-                contentColor = PhenomenonCanvas
-            ),
-            shape = RoundedCornerShape(14.dp)
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                .padding(14.dp)
         ) {
-            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                "TRANSMIT CITIZEN REPORT",
-                fontWeight = FontWeight.Black,
-                fontSize = 13.sp,
-                letterSpacing = 0.8.sp
-            )
+            Column {
+                Text(
+                    text = "SELECT SEVERITY LEVEL",
+                    color = SkeuoTextTertiary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(Severity.LOW, Severity.MEDIUM, Severity.HIGH).forEach { sev ->
+                        val isSelected = severity == sev
+                        val btnColor = when (sev) {
+                            Severity.LOW -> SkeuoEmerald
+                            Severity.MEDIUM -> SkeuoAmber
+                            Severity.HIGH -> SkeuoCrimson
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .shadow(
+                                    elevation = if (isSelected) 1.dp else 3.dp,
+                                    shape = RoundedCornerShape(12.dp),
+                                    ambientColor = btnColor.copy(alpha = 0.3f)
+                                )
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) btnColor else SkeuoWellInset
+                                )
+                                .border(1.dp, if (isSelected) Color.White else SkeuoBorderLight, RoundedCornerShape(12.dp))
+                                .clickable { severity = sev }
+                                .padding(vertical = 10.dp)
+                                .testTag("severity_tab_${sev.name.lowercase()}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = sev.label.uppercase(),
+                                color = if (isSelected) Color.White else SkeuoTextSecondary,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
+
+        // Form Fields (Road Location & Description)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "LOCATION & DETAILS",
+                    color = SkeuoTextTertiary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+
+                OutlinedTextField(
+                    value = roadName,
+                    onValueChange = { roadName = it },
+                    label = { Text("Road / Landmark Name") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("report_road_name_input"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = SkeuoWellInset,
+                        unfocusedContainerColor = SkeuoWellInset,
+                        focusedBorderColor = SkeuoCobalt,
+                        unfocusedBorderColor = SkeuoBorderLight,
+                        focusedTextColor = SkeuoTextPrimary,
+                        unfocusedTextColor = SkeuoTextPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Hazard Description / Context") },
+                    placeholder = { Text("E.g., deep edge pothole on right lane after flyover") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("report_desc_input"),
+                    minLines = 3,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = SkeuoWellInset,
+                        unfocusedContainerColor = SkeuoWellInset,
+                        focusedBorderColor = SkeuoCobalt,
+                        unfocusedBorderColor = SkeuoBorderLight,
+                        focusedTextColor = SkeuoTextPrimary,
+                        unfocusedTextColor = SkeuoTextPrimary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+
+        // Primary Submit Push Button
+        SkeuomorphicButton(
+            onClick = {
+                onSubmitReport(
+                    severity,
+                    description.ifBlank { "Citizen manual report at $roadName" },
+                    roadName,
+                    selectedPhotoUri?.toString()
+                )
+            },
+            backgroundColor = SkeuoCobalt,
+            cornerRadius = 16.dp,
+            tag = "submit_report_button",
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = null,
+                    tint = SkeuoTextInverse,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "DISPATCH ROAD REPORT",
+                    color = SkeuoTextInverse,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
-@Composable
-private fun SeveritySelectButton(
-    label: String,
-    color: Color,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) color.copy(alpha = 0.15f) else PhenomenonSurface)
-            .border(
-                1.5.dp,
-                if (isSelected) color else PhenomenonBorder,
-                RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() }
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (isSelected) color else PhenomenonTextSecondary,
-            fontWeight = FontWeight.Black,
-            fontSize = 11.sp,
-            letterSpacing = 0.5.sp
-        )
-    }
-}

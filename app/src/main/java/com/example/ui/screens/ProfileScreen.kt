@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -45,19 +46,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.UserProfile
 import com.example.data.models.UserRole
-import com.example.ui.theme.PhenomenonBorder
-import com.example.ui.theme.PhenomenonBorderActive
-import com.example.ui.theme.PhenomenonCanvas
-import com.example.ui.theme.PhenomenonCrimson
-import com.example.ui.theme.PhenomenonCyanElectric
-import com.example.ui.theme.PhenomenonElectricLime
-import com.example.ui.theme.PhenomenonEmerald
-import com.example.ui.theme.PhenomenonPurpleNeon
-import com.example.ui.theme.PhenomenonSurface
-import com.example.ui.theme.PhenomenonSurfaceElevated
-import com.example.ui.theme.PhenomenonTextPrimary
-import com.example.ui.theme.PhenomenonTextSecondary
-import com.example.ui.theme.PhenomenonTextTertiary
+import com.example.ui.components.SkeuomorphicButton
+import com.example.ui.components.SkeuomorphicLed
+import com.example.ui.components.skeuomorphicCard
+import com.example.ui.components.skeuomorphicInset
+import com.example.ui.theme.SkeuoAmber
+import com.example.ui.theme.SkeuoBorderLight
+import com.example.ui.theme.SkeuoCanvas
+import com.example.ui.theme.SkeuoCobalt
+import com.example.ui.theme.SkeuoCrimson
+import com.example.ui.theme.SkeuoEmerald
+import com.example.ui.theme.SkeuoHighlight
+import com.example.ui.theme.SkeuoPurple
+import com.example.ui.theme.SkeuoShadowDark
+import com.example.ui.theme.SkeuoSurface
+import com.example.ui.theme.SkeuoSurfaceElevated
+import com.example.ui.theme.SkeuoTextInverse
+import com.example.ui.theme.SkeuoTextPrimary
+import com.example.ui.theme.SkeuoTextSecondary
+import com.example.ui.theme.SkeuoTextTertiary
+import com.example.ui.theme.SkeuoWellInset
 
 @Composable
 fun ProfileScreen(
@@ -68,50 +76,82 @@ fun ProfileScreen(
     var backgroundSensorsEnabled by remember { mutableStateOf(true) }
     var anonymousDataContribution by remember { mutableStateOf(true) }
 
-    val accentColor = if (userProfile.role == UserRole.AUTHORITY) PhenomenonPurpleNeon else PhenomenonElectricLime
+    val accentColor = if (userProfile.role == UserRole.AUTHORITY) SkeuoPurple else SkeuoCobalt
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(PhenomenonCanvas)
+            .background(SkeuoCanvas)
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Header
-        Column {
-            Text(
-                text = "System Profile & Sensors",
-                color = PhenomenonTextPrimary,
-                fontWeight = FontWeight.Black,
-                fontSize = 20.sp,
-                letterSpacing = (-0.3).sp
-            )
-            Text(
-                text = "COMMUTER TELEMETRY // PREFERENCES",
-                color = PhenomenonTextTertiary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp
-            )
-        }
-
-        // Phenomenon User Identity Card
+        // Skeuomorphic Header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(PhenomenonSurface)
-                .border(1.dp, PhenomenonBorder, RoundedCornerShape(20.dp))
-                .padding(18.dp)
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                .padding(14.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SkeuomorphicLed(isOn = true, color = accentColor)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "SYSTEM PREFERENCES & HARDWARE",
+                            color = accentColor,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 10.sp,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+                    Text(
+                        text = "User Profile & Diagnostics",
+                        color = SkeuoTextPrimary,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SkeuoWellInset)
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = userProfile.role.name,
+                        color = accentColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
+
+        // Tactile ID Badge Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .skeuomorphicCard(cornerRadius = 20.dp, elevation = 5.dp)
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
                         .size(54.dp)
+                        .shadow(4.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.15f))
-                        .border(1.5.dp, accentColor.copy(alpha = 0.4f), CircleShape),
+                        .background(Color.White)
+                        .border(2.dp, accentColor, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -121,210 +161,190 @@ fun ProfileScreen(
                         modifier = Modifier.size(28.dp)
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+
+                Spacer(modifier = Modifier.width(14.dp))
+
                 Column {
                     Text(
                         text = userProfile.name,
-                        color = PhenomenonTextPrimary,
+                        color = SkeuoTextPrimary,
                         fontWeight = FontWeight.Black,
-                        fontSize = 16.sp
+                        fontSize = 18.sp
                     )
                     Text(
                         text = userProfile.email,
-                        color = PhenomenonTextSecondary,
-                        fontSize = 12.sp
+                        color = SkeuoTextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(accentColor.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "PORTAL: ${userProfile.role.name} SESSION",
-                            color = accentColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.5.sp
-                        )
-                    }
+                    Text(
+                        text = userProfile.jurisdictionArea,
+                        color = accentColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
 
-        // Dedicated Logout / Switch Portal Button
+        // Hardware Sensor Engine Config
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(PhenomenonSurface)
-                .border(1.dp, PhenomenonCrimson.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .clickable { onLogout() }
-                .padding(16.dp)
-                .testTag("logout_card_btn")
+                .skeuomorphicCard(cornerRadius = 18.dp, elevation = 4.dp)
+                .padding(14.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(PhenomenonCrimson.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = null,
-                            tint = PhenomenonCrimson,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "HARDWARE SENSOR CONFIGURATION",
+                    color = SkeuoTextTertiary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Sign Out / Switch Portal",
-                            color = PhenomenonTextPrimary,
+                            text = "Background Telemetry Service",
+                            color = SkeuoTextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
                         Text(
-                            text = "Return to Citizen / Authority Portal login screen",
-                            color = PhenomenonTextTertiary,
+                            text = "Continuous 50Hz high-pass anomaly detector",
+                            color = SkeuoTextTertiary,
                             fontSize = 11.sp
                         )
                     }
+                    Switch(
+                        checked = backgroundSensorsEnabled,
+                        onCheckedChange = { backgroundSensorsEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accentColor,
+                            uncheckedThumbColor = SkeuoTextTertiary,
+                            uncheckedTrackColor = SkeuoWellInset
+                        )
+                    )
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Adaptive Battery Saver GPS",
+                            color = SkeuoTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Throttles GPS polling when vehicle is stationary",
+                            color = SkeuoTextTertiary,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = adaptiveGpsEnabled,
+                        onCheckedChange = { adaptiveGpsEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accentColor,
+                            uncheckedThumbColor = SkeuoTextTertiary,
+                            uncheckedTrackColor = SkeuoWellInset
+                        )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Crowdsourced Telemetry Sharing",
+                            color = SkeuoTextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Anonymously upload road defect bumps to civic grid",
+                            color = SkeuoTextTertiary,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Switch(
+                        checked = anonymousDataContribution,
+                        onCheckedChange = { anonymousDataContribution = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accentColor,
+                            uncheckedThumbColor = SkeuoTextTertiary,
+                            uncheckedTrackColor = SkeuoWellInset
+                        )
+                    )
+                }
+            }
+        }
+
+        // Hardware Diagnostics Inset Box
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .skeuomorphicInset(cornerRadius = 16.dp)
+                .padding(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    "DISCONNECT",
-                    color = PhenomenonCrimson,
+                    text = "DEVICE TELEMETRY SPECS",
+                    color = SkeuoTextTertiary,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
-                    fontSize = 11.sp,
-                    letterSpacing = 0.8.sp
+                    letterSpacing = 0.5.sp
                 )
+                Text(text = "Sensor: 3-Axis MEMS Linear Accelerometer", color = SkeuoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Sampling Rate: 50 Samples/Sec (High-pass filtered)", color = SkeuoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(text = "AI Model: Gemini Flash Road Analysis API", color = SkeuoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Mapping Engine: Google Maps Android SDK", color = SkeuoTextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        // Edge Detection & Sensor Tuning Preferences
-        Text(
-            "Edge Engine & Telemetry Tuning",
-            color = PhenomenonTextPrimary,
-            fontWeight = FontWeight.Black,
-            fontSize = 14.sp,
-            letterSpacing = (-0.2).sp
-        )
-
-        Box(
+        // Logout Button
+        SkeuomorphicButton(
+            onClick = onLogout,
+            backgroundColor = SkeuoCrimson,
+            cornerRadius = 16.dp,
+            tag = "profile_logout_btn",
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(PhenomenonSurface)
-                .border(1.dp, PhenomenonBorder, RoundedCornerShape(20.dp))
-                .padding(16.dp)
+                .height(54.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SettingToggleRow(
-                    icon = Icons.Default.BatteryChargingFull,
-                    title = "Adaptive GPS Sampling",
-                    subtitle = "Reduces polling rate when vehicle is decelerated",
-                    checked = adaptiveGpsEnabled,
-                    accentColor = accentColor,
-                    onCheckedChange = { adaptiveGpsEnabled = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                    contentDescription = "Log Out",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
                 )
-                SettingToggleRow(
-                    icon = Icons.Default.Sensors,
-                    title = "Z-THRESH Edge Engine",
-                    subtitle = "Filter standard engine vibrations locally",
-                    checked = backgroundSensorsEnabled,
-                    accentColor = accentColor,
-                    onCheckedChange = { backgroundSensorsEnabled = it }
-                )
-                SettingToggleRow(
-                    icon = Icons.Default.Security,
-                    title = "Anonymous Road Telemetry",
-                    subtitle = "Strip personal identifier before batch sync",
-                    checked = anonymousDataContribution,
-                    accentColor = accentColor,
-                    onCheckedChange = { anonymousDataContribution = it }
-                )
-            }
-        }
-
-        // Academic Project Credits with Phenomenon Subtle Styling
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(PhenomenonSurfaceElevated.copy(alpha = 0.5f))
-                .border(1.dp, PhenomenonBorder, RoundedCornerShape(16.dp))
-                .padding(16.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = PhenomenonCyanElectric,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "PROJECT CREDITS",
-                        color = PhenomenonCyanElectric,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 11.sp,
-                        letterSpacing = 0.8.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Smart Pothole Locator & Management System\nDepartment of Information Technology\nAmrutvahini College of Engineering, Sangamner\nClass of 2026-27",
-                    color = PhenomenonTextSecondary,
-                    fontSize = 11.sp,
-                    lineHeight = 17.sp
+                    text = "DISCONNECT & LOGOUT",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 13.sp,
+                    letterSpacing = 0.5.sp
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun SettingToggleRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    accentColor: Color,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(title, color = PhenomenonTextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(subtitle, color = PhenomenonTextTertiary, fontSize = 11.sp)
-            }
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = PhenomenonCanvas,
-                checkedTrackColor = accentColor,
-                uncheckedThumbColor = PhenomenonTextTertiary,
-                uncheckedTrackColor = PhenomenonCanvas
-            )
-        )
+        Spacer(modifier = Modifier.height(20.dp))
     }
 }

@@ -40,8 +40,10 @@ data class MainUiState(
     val lastImpactScore: Float = 0f,
     val lastImpactTime: Long = 0L,
     val activePotholeDetail: Pothole? = null,
+    val mapFocusCoordinates: Pair<Double, Double>? = null,
     val aiSummaryText: String? = null,
     val isAiLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val alertMessage: String? = null
 )
 
@@ -145,6 +147,18 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(authorityTab = index)
     }
 
+    fun navigateToClusterMap(lat: Double? = null, lng: Double? = null) {
+        _uiState.value = _uiState.value.copy(
+            authorityTab = 1,
+            selectedTab = 1,
+            mapFocusCoordinates = if (lat != null && lng != null) Pair(lat, lng) else null
+        )
+    }
+
+    fun clearMapFocusCoordinates() {
+        _uiState.value = _uiState.value.copy(mapFocusCoordinates = null)
+    }
+
     fun startMonitoring() {
         locationService.startAdaptiveTracking()
         sensorEngine.start()
@@ -226,17 +240,30 @@ class MainViewModel(
         }
     }
 
+    fun refreshCloudReports() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isRefreshing = true)
+            val result = repository.syncWithCloudAndFetchLatest()
+            _uiState.value = _uiState.value.copy(
+                isRefreshing = false,
+                alertMessage = "Synced with cloud: ${result.totalActivePotholes} road hazards active in cache (${result.syncedCount} uploads synced)."
+            )
+        }
+    }
+
     fun inspectPothole(pothole: Pothole?) {
         _uiState.value = _uiState.value.copy(activePotholeDetail = pothole)
     }
 
     fun updatePotholeStatus(potholeId: String, newStatus: PotholeStatus, crew: String? = null) {
-        repository.updatePotholeStatus(potholeId, newStatus, crew)
-        _uiState.value.activePotholeDetail?.let {
-            if (it.potholeId == potholeId) {
-                _uiState.value = _uiState.value.copy(
-                    activePotholeDetail = it.copy(status = newStatus, assignedTo = crew ?: it.assignedTo)
-                )
+        viewModelScope.launch {
+            repository.updatePotholeStatus(potholeId, newStatus, crew)
+            _uiState.value.activePotholeDetail?.let {
+                if (it.potholeId == potholeId) {
+                    _uiState.value = _uiState.value.copy(
+                        activePotholeDetail = it.copy(status = newStatus, assignedTo = crew ?: it.assignedTo)
+                    )
+                }
             }
         }
     }

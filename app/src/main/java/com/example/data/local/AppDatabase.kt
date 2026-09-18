@@ -6,8 +6,12 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [DetectionEventEntity::class, ManualReportEntity::class],
-    version = 1,
+    entities = [
+        DetectionEventEntity::class,
+        ManualReportEntity::class,
+        PotholeEntity::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,7 +27,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "smart_pothole.db"
-                ).fallbackToDestructiveMigration(dropAllTables = true).build()
+                )
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
                 INSTANCE = instance
                 instance
             }

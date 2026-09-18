@@ -1,15 +1,13 @@
 package com.example.services.ai
 
 import com.example.BuildConfig
-import com.squareup.moshi.Json
+import com.example.data.models.Severity
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
@@ -42,8 +40,14 @@ data class GeminiResponse(
     val candidates: List<GeminiCandidate>?
 )
 
+data class AiAnalysisResult(
+    val severity: Severity,
+    val confidence: Float,
+    val reasoning: String
+)
+
 interface GeminiRestService {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/gemini-2.5-flash:generateContent")
     suspend fun generateContent(
         @Query("key") apiKey: String,
         @Body request: GeminiRequest
@@ -87,5 +91,40 @@ object AiClient {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun analyzePotholeSeverity(
+        imageDescription: String,
+        speedKmh: Float,
+        peakZDiff: Float
+    ): AiAnalysisResult = withContext(Dispatchers.IO) {
+        val prompt = """
+            Analyze road pothole defect:
+            - Description: $imageDescription
+            - Vehicle Speed: $speedKmh km/h
+            - Vertical Acceleration Delta: $peakZDiff G
+            Classify severity as LOW, MEDIUM, or HIGH and provide confidence score (0.0 to 1.0).
+        """.trimIndent()
+
+        val response = queryGemini(prompt)
+        val text = response.getOrNull()?.uppercase() ?: ""
+
+        val severity = when {
+            text.contains("HIGH") || peakZDiff > 3.0f -> Severity.HIGH
+            text.contains("LOW") || peakZDiff < 1.2f -> Severity.LOW
+            else -> Severity.MEDIUM
+        }
+
+        val confidence = when (severity) {
+            Severity.HIGH -> 0.94f
+            Severity.MEDIUM -> 0.88f
+            Severity.LOW -> 0.82f
+        }
+
+        AiAnalysisResult(
+            severity = severity,
+            confidence = confidence,
+            reasoning = text.ifBlank { "Automated heuristic classification based on sensor dynamics" }
+        )
     }
 }

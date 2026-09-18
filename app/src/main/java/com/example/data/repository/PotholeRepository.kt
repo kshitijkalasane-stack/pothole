@@ -3,26 +3,56 @@ package com.example.data.repository
 import com.example.data.local.DetectionEventEntity
 import com.example.data.local.ManualReportEntity
 import com.example.data.local.PotholeDao
+import com.example.data.local.PotholeEntity
+import com.example.data.local.toEntity
 import com.example.data.models.Pothole
 import com.example.data.models.PotholeStatus
 import com.example.data.models.Severity
 import com.example.data.models.SyncStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
-class PotholeRepository(private val dao: PotholeDao) {
+class PotholeRepository(
+    private val dao: PotholeDao,
+    private val applicationScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+) {
 
-    // Global Cloud-like In-memory Potholes store (matching Firestore shared view)
-    private val _cloudPotholes = MutableStateFlow<List<Pothole>>(initialSeedPotholes())
-    val cloudPotholes: StateFlow<List<Pothole>> = _cloudPotholes.asStateFlow()
+    // Reactive Cached Potholes from Room Database (Offline-first source of truth)
+    val cloudPotholes: StateFlow<List<Pothole>> = dao.getAllPotholes()
+        .map { entities -> entities.map { it.toDomainModel() } }
+        .stateIn(
+            scope = applicationScope,
+            started = SharingStarted.Eagerly,
+            initialValue = initialSeedPotholes()
+        )
 
-    // Local DB Observables
+    // Local DB Observables for Detections and Reports
     val localDetections: Flow<List<DetectionEventEntity>> = dao.getAllDetections()
     val localReports: Flow<List<ManualReportEntity>> = dao.getAllReports()
     val detectionCount: Flow<Int> = dao.getDetectionCount()
+
+    init {
+        // Pre-populate Room database with initial seed potholes if empty
+        applicationScope.launch {
+            seedDatabaseIfEmpty()
+        }
+    }
+
+    private suspend fun seedDatabaseIfEmpty() = withContext(Dispatchers.IO) {
+        val count = dao.getPotholeCountSync()
+        if (count == 0) {
+            val entities = initialSeedPotholes().map { it.toEntity() }
+            dao.insertPotholes(entities)
+        }
+    }
 
     suspend fun recordDetectedAnomaly(
         lat: Double,
@@ -32,7 +62,7 @@ class PotholeRepository(private val dao: PotholeDao) {
         severity: Severity,
         zDiffMax: Float,
         speedKmh: Float
-    ): DetectionEventEntity {
+    ): DetectionEventEntity = withContext(Dispatchers.IO) {
         val event = DetectionEventEntity(
             eventId = "DET-${UUID.randomUUID().toString().take(8).uppercase()}",
             latitude = lat,
@@ -47,9 +77,9 @@ class PotholeRepository(private val dao: PotholeDao) {
             speedKmh = speedKmh
         )
         dao.insertDetection(event)
-        // Check for clustering / update cloud representation
+        // Check for clustering & persist cached pothole in Room
         clusterOrAddPothole(lat, lng, severity, confidence)
-        return event
+        event
     }
 
     suspend fun submitManualReport(
@@ -60,7 +90,7 @@ class PotholeRepository(private val dao: PotholeDao) {
         photoUri: String?,
         roadName: String,
         aiRiskSummary: String? = null
-    ): ManualReportEntity {
+    ): ManualReportEntity = withContext(Dispatchers.IO) {
         val report = ManualReportEntity(
             reportId = "REP-${UUID.randomUUID().toString().take(8).uppercase()}",
             latitude = lat,
@@ -74,46 +104,70 @@ class PotholeRepository(private val dao: PotholeDao) {
             aiRiskAnalysis = aiRiskSummary
         )
         dao.insertReport(report)
-        clusterOrAddPothole(lat, lng, severity, 0.85f, description)
-        return report
+        clusterOrAddPothole(lat, lng, severity, 0.85f, description, roadName)
+        report
     }
 
-    suspend fun triggerSyncBatch(): Int {
+    suspend fun triggerSyncBatch(): Int = withContext(Dispatchers.IO) {
         val pending = dao.getPendingDetections()
         for (item in pending) {
             dao.updateDetectionSyncStatus(item.eventId, SyncStatus.SYNCED)
         }
-        return pending.size
+        pending.size
     }
 
-    private fun clusterOrAddPothole(
+    suspend fun syncWithCloudAndFetchLatest(): SyncResult = withContext(Dispatchers.IO) {
+        // 1. Sync pending local items
+        val pending = dao.getPendingDetections()
+        for (item in pending) {
+            dao.updateDetectionSyncStatus(item.eventId, SyncStatus.SYNCED)
+        }
+
+        // 2. Network simulation delay to simulate fetching cloud records
+        kotlinx.coroutines.delay(1000)
+
+        // 3. Ensure baseline potholes are populated in Room
+        val count = dao.getPotholeCountSync()
+        if (count == 0) {
+            seedDatabaseIfEmpty()
+        }
+
+        SyncResult(
+            syncedCount = pending.size,
+            totalActivePotholes = dao.getPotholeCountSync()
+        )
+    }
+
+    private suspend fun clusterOrAddPothole(
         lat: Double,
         lng: Double,
         severity: Severity,
         confidence: Float,
-        note: String = ""
-    ) {
-        val current = _cloudPotholes.value.toMutableList()
+        note: String = "",
+        roadName: String = ""
+    ) = withContext(Dispatchers.IO) {
+        val currentPotholes = dao.getPotholeListSnapshot()
         // Geographic clustering within ~40 meters (~0.0004 deg)
-        val existingIndex = current.indexOfFirst {
+        val existing = currentPotholes.firstOrNull {
             val dLat = Math.abs(it.latitude - lat)
             val dLng = Math.abs(it.longitude - lng)
             dLat < 0.0004 && dLng < 0.0004
         }
 
-        if (existingIndex >= 0) {
-            val existing = current[existingIndex]
+        if (existing != null) {
             val updated = existing.copy(
                 reportCount = existing.reportCount + 1,
                 verificationCount = existing.verificationCount + 1,
                 lastDetectedAt = System.currentTimeMillis(),
                 confidence = ((existing.confidence + confidence) / 2.0).coerceAtMost(0.99),
-                severity = if (severity == Severity.HIGH || existing.severity == Severity.HIGH) Severity.HIGH else existing.severity
+                severity = if (severity == Severity.HIGH || existing.severity == Severity.HIGH) Severity.HIGH else existing.severity,
+                notes = if (note.isNotBlank()) "${existing.notes}\n$note".trim() else existing.notes
             )
-            current[existingIndex] = updated
+            dao.updatePothole(updated)
         } else {
-            val newPothole = Pothole(
-                potholeId = "PTH-${(current.size + 1001)}",
+            val addressText = if (roadName.isNotBlank()) roadName else "Near Highway Km ${(20..45).random()}, Sangamner"
+            val newPothole = PotholeEntity(
+                potholeId = "PTH-${(currentPotholes.size + 1001)}",
                 latitude = lat,
                 longitude = lng,
                 severity = severity,
@@ -123,26 +177,27 @@ class PotholeRepository(private val dao: PotholeDao) {
                 status = PotholeStatus.OPEN,
                 firstDetectedAt = System.currentTimeMillis(),
                 lastDetectedAt = System.currentTimeMillis(),
-                address = "Near Highway Km ${(20..45).random()}, Sangamner",
+                address = addressText,
                 notes = note
             )
-            current.add(0, newPothole)
+            dao.insertPothole(newPothole)
         }
-        _cloudPotholes.value = current
     }
 
-    fun updatePotholeStatus(potholeId: String, newStatus: PotholeStatus, assignedCrew: String? = null) {
-        val current = _cloudPotholes.value.toMutableList()
-        val index = current.indexOfFirst { it.potholeId == potholeId }
-        if (index >= 0) {
-            val target = current[index]
-            current[index] = target.copy(
+    suspend fun updatePotholeStatus(potholeId: String, newStatus: PotholeStatus, assignedCrew: String? = null) = withContext(Dispatchers.IO) {
+        val existing = dao.getPotholeById(potholeId)
+        if (existing != null) {
+            val updated = existing.copy(
                 status = newStatus,
-                assignedTo = assignedCrew ?: target.assignedTo,
-                verificationCount = if (newStatus == PotholeStatus.UNDER_VERIFICATION) target.verificationCount + 1 else target.verificationCount
+                assignedTo = assignedCrew ?: existing.assignedTo,
+                verificationCount = if (newStatus == PotholeStatus.UNDER_VERIFICATION) existing.verificationCount + 1 else existing.verificationCount
             )
-            _cloudPotholes.value = current
+            dao.updatePothole(updated)
         }
+    }
+
+    suspend fun incrementPotholeVerification(potholeId: String) = withContext(Dispatchers.IO) {
+        dao.incrementVerification(potholeId)
     }
 
     private fun initialSeedPotholes(): List<Pothole> {
@@ -201,3 +256,8 @@ class PotholeRepository(private val dao: PotholeDao) {
         )
     }
 }
+
+data class SyncResult(
+    val syncedCount: Int,
+    val totalActivePotholes: Int
+)

@@ -1,62 +1,41 @@
 package com.example.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Phenomenon Studio / Phenomenon Product Theme
-// Ultra-sleek, minimalist dark canvas with high-energy Electric Lime & Cyber Violet accents
-private val PhenomenonDarkColorScheme = darkColorScheme(
-    primary = PhenomenonElectricLime,
-    onPrimary = PhenomenonCanvas,
-    primaryContainer = PhenomenonSurfaceElevated,
-    onPrimaryContainer = PhenomenonElectricLime,
-    secondary = PhenomenonPurpleNeon,
-    onSecondary = Color.White,
-    secondaryContainer = PhenomenonSurfaceElevated,
-    onSecondaryContainer = PhenomenonPurpleNeon,
-    tertiary = PhenomenonCyanElectric,
-    onTertiary = PhenomenonCanvas,
-    background = PhenomenonCanvas,
-    surface = PhenomenonSurface,
-    surfaceVariant = PhenomenonSurfaceElevated,
-    onBackground = PhenomenonTextPrimary,
-    onSurface = PhenomenonTextPrimary,
-    outline = PhenomenonBorder,
-    outlineVariant = PhenomenonBorderActive,
-    error = PhenomenonCrimson
-)
-
-private val PhenomenonLightColorScheme = lightColorScheme(
-    primary = PhenomenonCanvas,
+// Skeuomorphic Light Color Scheme
+private val SkeuomorphicLightColorScheme = lightColorScheme(
+    primary = SkeuoCobalt,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF1F5F9),
-    onPrimaryContainer = PhenomenonCanvas,
-    secondary = PhenomenonPurpleNeon,
+    primaryContainer = SkeuoWellInset,
+    onPrimaryContainer = SkeuoTextPrimary,
+    secondary = SkeuoPurple,
     onSecondary = Color.White,
-    tertiary = PhenomenonEmerald,
-    background = Color(0xFFF8FAFC),
-    surface = Color.White,
-    surfaceVariant = Color(0xFFF1F5F9),
-    onBackground = PhenomenonCanvas,
-    onSurface = PhenomenonCanvas,
-    outline = Color(0xFFE2E8F0),
-    error = PhenomenonCrimson
+    secondaryContainer = SkeuoSurfaceElevated,
+    onSecondaryContainer = SkeuoTextPrimary,
+    tertiary = SkeuoEmerald,
+    onTertiary = Color.White,
+    background = SkeuoCanvas,
+    surface = SkeuoSurface,
+    surfaceVariant = SkeuoWellInset,
+    onBackground = SkeuoTextPrimary,
+    onSurface = SkeuoTextPrimary,
+    outline = SkeuoBorderLight,
+    outlineVariant = SkeuoChromeBezel,
+    error = SkeuoCrimson,
+    onError = Color.White
 )
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = true, // Default to Phenomenon signature dark aesthetic
+    darkTheme: Boolean = false, // Default to light Skeuomorphic aesthetic
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) PhenomenonDarkColorScheme else PhenomenonLightColorScheme
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = SkeuomorphicLightColorScheme,
         typography = Typography,
         content = content
     )
